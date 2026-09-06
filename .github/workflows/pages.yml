@@ -6,7 +6,12 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    # The default branch is currently the feature branch below; `main` is
+    # listed too so this keeps working if the project is later merged or
+    # renamed there.
+    branches:
+      - main
+      - claude/pet-rock-simulator-app-19toml
   workflow_dispatch:
 
 permissions:

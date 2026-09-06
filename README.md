@@ -82,13 +82,25 @@ npm run icons      # regenerate the PNG icon set (needs python3)
 
 ## Deploying
 
-Push to `main` and the included workflow publishes the repo to GitHub Pages.
-Enable it once under **Settings → Pages → Source: GitHub Actions**. The site is
-then at `https://<user>.github.io/<repo>/` — every path in the app is relative,
-so it works fine from a subdirectory.
+`.github/workflows/pages.yml` runs the tests and publishes the repo to GitHub
+Pages on every push to the default branch. It needs one manual step first,
+because the Pages source can only be set by a repository admin:
 
-Any static host works just as well: drop the folder on Netlify, Vercel, S3,
-whatever — there is no build step and no backend.
+1. **Settings → Pages → Build and deployment → Source: _GitHub Actions_**
+   ([direct link](https://github.com/Jack-O-VScode/My-Game/settings/pages))
+2. Push anything (or **Actions → Deploy to GitHub Pages → Run workflow**).
+
+The site then goes live at **https://jack-o-vscode.github.io/My-Game/** —
+public, free, HTTPS, no server to run. Every path in the app is relative, so
+serving from a `/My-Game/` subdirectory works fine.
+
+**Custom domain:** buy a domain, point a `CNAME` record at
+`jack-o-vscode.github.io`, and set it under Settings → Pages → Custom domain.
+Leave *Enforce HTTPS* on — installing a PWA requires it.
+
+Any static host works just as well — Netlify, Vercel, Cloudflare Pages, S3 —
+since there is no build step and no backend. Drag the folder into
+[app.netlify.com/drop](https://app.netlify.com/drop) and it's online in seconds.
 
 ## Layout
 
