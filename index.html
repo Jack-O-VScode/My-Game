@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pet Rock Simulator</title>
+<meta name="description" content="Adopt a pet rock: scrub it, polish it, play with it and water its moss. Level up, earn coins, buy cosmetics and climb the leaderboard.">
+<meta name="theme-color" content="#17141f">
+<meta name="color-scheme" content="dark">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/favicon-64.png" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pet Rock">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="ident">
+        <button id="rock-name" class="rock-name" type="button" aria-label="Rename your rock">Pebbles</button>
+        <p class="mood-line" id="mood-line">Say hello to your rock.</p>
+      </div>
+      <div class="coins" id="coins" aria-label="Coins">
+        <span aria-hidden="true">🪙</span><span id="coin-count">0</span>
+      </div>
+    </div>
+    <div class="level-row">
+      <span class="level-badge">Lv&nbsp;<b id="level">1</b></span>
+      <div class="xp-track" role="progressbar" aria-label="Experience" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="xp-track">
+        <div class="xp-fill" id="xp-fill"></div>
+      </div>
+      <span class="xp-text" id="xp-text">0 / 80</span>
+    </div>
+  </header>
+
+  <main class="screens">
+
+    <!-- ------------------------------ CARE ------------------------------ -->
+    <section class="screen is-active" id="screen-care" aria-label="Care">
+      <div class="stage" id="stage"></div>
+      <p class="need-note" id="need-note" role="status"></p>
+      <div class="stats" id="stats"></div>
+      <div class="actions" id="actions"></div>
+    </section>
+
+    <!-- ------------------------------ SHOP ------------------------------ -->
+    <section class="screen" id="screen-shop" aria-label="Shop" hidden>
+      <div class="section-head">
+        <h2>Rock Boutique</h2>
+        <p class="hint">Buy it once, wear it forever. Tap an owned item to equip it.</p>
+      </div>
+      <div class="tabs" id="shop-tabs" role="tablist"></div>
+      <div class="grid" id="shop-grid"></div>
+    </section>
+
+    <!-- --------------------------- LEADERBOARD -------------------------- -->
+    <section class="screen" id="screen-board" aria-label="Leaderboard" hidden>
+      <div class="section-head">
+        <h2>Leaderboard</h2>
+        <p class="hint">Every keeper in the neighbourhood, ranked by rock level.</p>
+      </div>
+      <div class="board-controls">
+        <button class="sort-btn" id="sort-btn" type="button" aria-live="polite">
+          <span class="sort-arrow" id="sort-arrow" aria-hidden="true">▼</span>
+          <span id="sort-label">Highest first</span>
+        </button>
+        <span class="standing" id="standing"></span>
+      </div>
+      <ol class="board" id="board"></ol>
+      <p class="fine-print">
+        Rival keepers are simulated on your device — the game has no server, so nothing
+        you do here is uploaded and nobody else can see your rock.
+      </p>
+    </section>
+
+    <!-- ------------------------------ MORE ------------------------------ -->
+    <section class="screen" id="screen-more" aria-label="More" hidden>
+      <div class="section-head">
+        <h2>Keeper Settings</h2>
+      </div>
+
+      <div class="card" id="install-card" hidden>
+        <h3>Install the app</h3>
+        <p class="hint" id="install-hint">Add Pet Rock to your home screen or desktop and it works offline.</p>
+        <button class="btn primary" id="install-btn" type="button">Install</button>
+      </div>
+
+      <div class="card">
+        <h3>Names</h3>
+        <div class="row">
+          <label for="input-rock">Rock</label>
+          <input id="input-rock" type="text" maxlength="18" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="row">
+          <label for="input-keeper">Keeper</label>
+          <input id="input-keeper" type="text" maxlength="18" autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Sound</h3>
+        <div class="row">
+          <label for="sound-toggle">Blips and bloops</label>
+          <input id="sound-toggle" type="checkbox" class="switch">
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>How it works</h3>
+        <ul class="rules">
+          <li>Four needs drain around the clock — even while the app is closed.</li>
+          <li>Keep the average care above 55% and your rock gains XP and levels up.</li>
+          <li>Let it slide and XP drains instead: levels can and will go back down.</li>
+          <li>Care actions and level-ups pay coins. Spend them in the boutique.</li>
+          <li>Come back each day for a streak bonus.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>Danger zone</h3>
+        <p class="hint">Releases your rock back into the wild and starts a brand new save.</p>
+        <button class="btn danger" id="reset-btn" type="button">Start over</button>
+      </div>
+
+      <p class="fine-print" id="version-line"></p>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Sections">
+    <button class="tab is-active" type="button" data-screen="care"><span aria-hidden="true">🪨</span>Care</button>
+    <button class="tab" type="button" data-screen="shop"><span aria-hidden="true">🛍️</span>Shop</button>
+    <button class="tab" type="button" data-screen="board"><span aria-hidden="true">🏆</span>Ranks</button>
+    <button class="tab" type="button" data-screen="more"><span aria-hidden="true">⚙️</span>More</button>
+  </nav>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+<dialog class="modal" id="modal">
+  <h3 id="modal-title">Title</h3>
+  <div id="modal-body"></div>
+  <div class="modal-actions">
+    <button class="btn ghost" id="modal-cancel" type="button">Cancel</button>
+    <button class="btn primary" id="modal-ok" type="button">OK</button>
+  </div>
+</dialog>
+
+<noscript>
+  <p style="padding:24px;color:#f4f0e6;font:16px system-ui">
+    Pet Rock Simulator needs JavaScript enabled to run.
+  </p>
+</noscript>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>

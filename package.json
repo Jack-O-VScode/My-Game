@@ -1,0 +1,13 @@
+{
+  "name": "pet-rock-simulator",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A pet rock you have to look after: an installable, offline-capable PWA game.",
+  "scripts": {
+    "start": "node tools/serve.js",
+    "test": "node --test tests/*.test.js",
+    "icons": "python3 tools/make_icons.py"
+  },
+  "engines": { "node": ">=18" }
+}
