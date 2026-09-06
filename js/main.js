@@ -3,10 +3,14 @@
  * handlers and registers the service worker / install flow.
  */
 
-import { ACTIONS, TUNING, itemById } from './config.js';
+import { ACTIONS, ONLINE, TUNING, itemById } from './config.js';
 import {
-  applyAction, buy, canBuy, claimDaily, equip, newState, simulate,
+  applyAction, buy, canBuy, careScore, claimDaily, equip, newState, simulate,
 } from './engine.js';
+import {
+  clearConfig, config as onlineConfig, describeError, fetchBoard, identity,
+  isConfigured, saveConfig, submitPet,
+} from './online.js';
 import { load, save, wipe } from './storage.js';
 import { sfx, setEnabled } from './sfx.js';
 import {
@@ -22,6 +26,15 @@ let state = newState();
 let screen = 'care';
 let lastSave = 0;
 let deferredInstall = null;
+
+/**
+ * Everything the UI needs to know about the online board.
+ * status: 'off' (no project connected) | 'loading' | 'live' | 'error'
+ */
+let net = { status: 'off', entries: null, error: null, detail: '', fetchedAt: 0, deviceId: null };
+let lastSubmitSig = null;
+let lastSubmitAt = 0;
+let boardInFlight = false;
 
 const dayKey = (d = new Date()) => {
   const p = (n) => String(n).padStart(2, '0');
@@ -43,14 +56,15 @@ function humanDuration(ms) {
 /* ------------------------------ rendering ----------------------------- */
 
 function render(now = Date.now()) {
-  renderTop(state);
+  renderTop(state, net);
   if (screen === 'care') renderCare(state, now);
   else if (screen === 'shop') renderShop(state);
-  else if (screen === 'board') renderBoard(state, now);
-  else if (screen === 'more') renderMore(state);
+  else if (screen === 'board') renderBoard(state, net, now);
+  else if (screen === 'more') renderMore(state, net);
 }
 
 function announce(events) {
+  if (events.length) publish(true);
   for (const ev of events) {
     if (ev.type === 'levelup') {
       toast(`Level ${ev.level}! +${ev.coins} coins`, 'gold');
@@ -65,6 +79,73 @@ function announce(events) {
   }
 }
 
+/* -------------------------------- online ------------------------------ */
+
+/** Only republish when something a viewer would notice has changed. */
+function submitSignature() {
+  return [state.level, Math.floor(state.xp / 10), state.playerName, state.rockName,
+    Math.round(careScore(state.stats) / 5)].join('|');
+}
+
+/** Publishes this device's pet, at most once per cooldown. */
+async function publish(force = false) {
+  if (!isConfigured()) return;
+  const now = Date.now();
+  const sig = submitSignature();
+  if (!force && sig === lastSubmitSig) return;
+  if (!force && now - lastSubmitAt < ONLINE.submitCooldownMs) return;
+
+  lastSubmitAt = now;
+  const result = await submitPet(state, careScore(state.stats));
+  if (result.ok) {
+    lastSubmitSig = sig;
+  } else if (net.status === 'live') {
+    // Keep showing the board we have, but stop claiming it is current.
+    net = { ...net, status: 'error', error: result.error, detail: result.detail || '' };
+    render();
+  }
+}
+
+/** Pulls the board. `force` ignores the freshness window. */
+async function refreshBoard(force = false) {
+  if (!isConfigured()) {
+    net = { ...net, status: 'off', entries: null, deviceId: null };
+    return;
+  }
+  const now = Date.now();
+  if (boardInFlight) return;
+  if (!force && net.status === 'live' && now - net.fetchedAt < ONLINE.boardMaxAgeMs) return;
+
+  boardInFlight = true;
+  if (net.status !== 'live') {
+    net = { ...net, status: 'loading' };
+    render();
+  }
+
+  const result = await fetchBoard(ONLINE.boardLimit);
+  boardInFlight = false;
+
+  net = result.ok
+    ? { status: 'live', entries: result.entries, error: null, detail: '',
+        fetchedAt: Date.now(), deviceId: identity().id }
+    : { ...net, status: 'error', error: result.error, detail: result.detail || '',
+        deviceId: identity().id };
+  render();
+}
+
+/** Publish then pull, so this device is on the board it is about to show. */
+async function syncOnline(force = false) {
+  if (!isConfigured()) {
+    if (net.status !== 'off') {
+      net = { status: 'off', entries: null, error: null, detail: '', fetchedAt: 0, deviceId: null };
+      render();
+    }
+    return;
+  }
+  await publish(force);
+  await refreshBoard(force);
+}
+
 /* -------------------------------- clock ------------------------------- */
 
 function tick() {
@@ -76,6 +157,9 @@ function tick() {
     lastSave = now;
     save(state);
   }
+  // Cheap no-ops unless something changed or the board has gone stale.
+  publish();
+  if (screen === 'board') refreshBoard();
 }
 
 function frame() {
@@ -180,6 +264,10 @@ async function onReset() {
   wipe();
   state = newState();
   save(state);
+  // The device keeps its identity, so this replaces its row rather than
+  // leaving a ghost behind: still one pet per device.
+  lastSubmitSig = null;
+  syncOnline(true);
   showScreen('care');
   screen = 'care';
   toast('A fresh pebble appears', 'good');
@@ -189,6 +277,66 @@ async function onReset() {
 function onScreen(name) {
   screen = name;
   render();
+  // Opening the leaderboard is a deliberate request to see it, so bypass
+  // the freshness window; the periodic refresh in tick() still respects it.
+  if (name === 'board') syncOnline(true);
+}
+
+/* --------------------------- online handlers -------------------------- */
+
+async function onConnect() {
+  const current = onlineConfig();
+  const answers = await dialog.form('Connect Supabase', `
+    <p>Paste the two values from your Supabase project
+    (<b>Project Settings → API</b>). Run <code>supabase/schema.sql</code> in the
+    SQL editor first, or the board will have nothing to talk to.</p>
+    <p>The anon key is safe to share — it identifies the project, it does not
+    grant access. Never paste a <code>service_role</code> key here.</p>`, [
+    { name: 'url', label: 'Project URL', value: current.url,
+      placeholder: 'https://abcdefgh.supabase.co' },
+    { name: 'anonKey', label: 'Anon public key', value: current.local ? current.anonKey : '',
+      placeholder: 'eyJhbGciOi…' },
+  ], 'Connect');
+  if (!answers) return;
+
+  const saved = saveConfig(answers.url, answers.anonKey);
+  if (!saved.ok) {
+    sfx.nope();
+    toast(saved.error, 'bad');
+    return;
+  }
+  toast('Connecting…', '');
+  lastSubmitSig = null;
+  await syncOnline(true);
+  if (net.status === 'live') {
+    sfx.coin();
+    toast('You are on the worldwide board', 'gold');
+  } else {
+    sfx.nope();
+    toast(describeError(net.error, net.detail), 'bad');
+  }
+  render();
+}
+
+async function onDisconnect() {
+  const ok = await dialog.confirm('Play offline?',
+    `<p>Your pet stays exactly as it is on this device, and the leaderboard goes
+     back to simulated rivals. Your row stops being updated but is not deleted —
+     reconnect the same project and this device picks it up again.</p>`,
+    'Play offline');
+  if (!ok) return;
+  clearConfig();
+  net = { status: 'off', entries: null, error: null, detail: '', fetchedAt: 0, deviceId: null };
+  lastSubmitSig = null;
+  sfx.tap();
+  toast('Back to practice mode', '');
+  render();
+}
+
+function onRefresh() {
+  if (!isConfigured()) return;
+  sfx.tap();
+  syncOnline(true);
 }
 
 /* --------------------------- install / PWA ---------------------------- */
@@ -274,6 +422,7 @@ function boot() {
 
   initUI({
     onAction, onItem, onSort, onRenameRock, onSound, onReset, onInstall, onScreen,
+    onConnect, onDisconnect, onRefresh,
     onShopTab: () => renderShop(state),
     onName: setName,
   });
@@ -301,13 +450,25 @@ function boot() {
   save(state);
   lastSave = now;
 
+  net = { ...net, status: isConfigured() ? 'loading' : 'off', deviceId: identity().id };
+  syncOnline(true);
+
   setInterval(tick, TICK_MS);
   requestAnimationFrame(frame);
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') tick();
-    else save(state);
+    if (document.visibilityState === 'visible') {
+      tick();
+      syncOnline();
+    } else {
+      save(state);
+      publish(true);
+    }
   });
+
+  // Coming back online should not need a tab switch to show a live board.
+  window.addEventListener('online', () => syncOnline(true));
+  window.addEventListener('offline', () => render());
   window.addEventListener('pagehide', () => save(state));
   window.addEventListener('blur', () => save(state));
 

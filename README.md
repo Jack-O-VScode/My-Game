@@ -6,11 +6,12 @@ down. Earn coins, dress it up in the boutique, and see where you land on the
 leaderboard.
 
 It's a **PWA**: one small web app that installs to the home screen or desktop on
-**Windows, Android and iOS**, and keeps working with no connection.
+**Windows, Android and iOS**, and keeps working with no connection. Point it at a
+free Supabase project and every player shares one live worldwide leaderboard.
 
 <p align="center">
   <img src="docs/screenshot-care.png" width="300" alt="The care screen: a pet rock in a beanie and scarf with four need bars">
-  <img src="docs/screenshot-leaderboard.png" width="300" alt="The leaderboard, sorted highest level first">
+  <img src="docs/screenshot-online.png" width="300" alt="The live leaderboard, sorted highest level first">
 </p>
 
 ---
@@ -56,14 +57,48 @@ full bar earns nothing), from every level-up, and from a daily check-in streak.
 scenes. Buy once, wear forever, swap any time. Expensive items also need a
 minimum level.
 
-**Leaderboard** — every keeper in the neighbourhood ranked by level, with a
-button to flip between **highest first** and **lowest first**. Your own row is
-highlighted wherever it lands.
+**Leaderboard** — every keeper ranked by level, with a button to flip between
+**highest first** and **lowest first**. Your own row is highlighted wherever it
+lands. Connect Supabase (below) and it's a live worldwide board; leave it
+unconnected and you play against simulated rivals instead.
 
-> The rival keepers are **simulated on your device**. The game has no server and
-> no accounts: nothing you do is uploaded, and nobody else can see your rock.
-> Rivals are generated from a fixed seed plus the calendar date, so they're the
-> same for everyone, stable through the day, and slowly climbing over time.
+## Online leaderboard
+
+Off by default — the game is fully playable with no backend at all. To switch on
+the shared board:
+
+1. Create a free project at [supabase.com](https://supabase.com).
+2. **SQL Editor → New query**, paste all of [`supabase/schema.sql`](supabase/schema.sql), run it.
+3. **Project Settings → API**, copy the **Project URL** and the **`anon` public**
+   key into `SUPABASE` at the top of [`js/config.js`](js/config.js), then redeploy.
+
+Everyone who opens your deployed site now shares one board. To try it before
+committing keys, use **More → Connect Supabase** in the app and paste the same
+two values — they're saved on that device only.
+
+**One pet per device.** There are no accounts or logins. On first run a device
+mints a random `device_id` and a private `secret`, kept outside the save file.
+The id is that device's single row on the board; the secret is what stops anyone
+else writing to it. *Start over* resets the pet and **replaces** that row rather
+than leaving a ghost behind, so the board never fills with abandoned rocks.
+Clearing site data or using another browser means a new device, and a new pet.
+
+**About the anon key.** It's public by design — it names the project, it doesn't
+grant access. What actually protects the data is in `schema.sql`: row level
+security allows `SELECT` only, column grants keep `secret` unreadable, and every
+write goes through `submit_pet()`, which checks the secret and clamps whatever
+the client sends. Committing the anon key is expected. Never put the
+`service_role` key in this repo.
+
+**What it can't do.** Levels are reported by each player's own browser, so a
+determined player can post a level they didn't earn — the server clamps the
+range and enforces one row per device, but it can't referee the game. Stopping
+that properly means simulating the rules server-side, which this doesn't do.
+Treat the top of the board as friendly competition.
+
+**When the network is away.** Nothing blocks on it. A failed fetch shows a plain
+"⚠️ … showing practice rivals" line, the game keeps playing, and your pet is
+republished as soon as the connection returns.
 
 ## Run it locally
 
@@ -76,9 +111,17 @@ manifest need a real origin, so use the dev server for anything install- or
 offline-related.
 
 ```bash
-npm test           # 23 unit tests covering the game rules
+npm test           # 34 unit tests covering the game rules and the online layer
 npm run icons      # regenerate the PNG icon set (needs python3)
+npm run mock       # a stand-in Supabase on :8081, for offline development
+npm run test:e2e   # drives two browsers against the mock (needs: npm i -D playwright)
 ```
+
+`npm test` has no dependencies at all. The end-to-end test does need Playwright,
+which is why it is a separate script: it opens two browser contexts as two
+devices and checks they see each other on one board, that the sort toggle works
+on live data, that one device cannot overwrite another's row, and that losing
+the backend falls back to practice rivals without breaking the game.
 
 ## Deploying
 
@@ -110,18 +153,24 @@ styles.css              one dark theme, mobile first
 manifest.webmanifest    PWA metadata (name, icons, colours)
 sw.js                   service worker: precaches the shell for offline play
 js/
-  config.js             tuning constants + the cosmetics catalogue
+  config.js             tuning constants, cosmetics catalogue, Supabase keys
   engine.js             pure game rules: decay, XP, levels, coins, shop
-  leaderboard.js        seeded rival generation + sorting
+  leaderboard.js        board assembly + sorting, live or simulated
+  online.js             Supabase client: device identity, publish, fetch
   render.js             draws the rock as layered SVG
   storage.js            guarded localStorage save/load
   sfx.js                WebAudio blips, no audio assets
   ui.js                 DOM rendering and event wiring
-  main.js               controller: clock, handlers, install flow
-tests/engine.test.js    node --test, no dependencies
+  main.js               controller: clock, handlers, sync, install flow
+supabase/schema.sql     table, RLS, and the guarded write function
+tests/
+  engine.test.js        game rules            (node --test)
+  online.test.js        online layer          (node --test)
+  online.e2e.mjs        two browsers vs the mock backend (Playwright)
 tools/
   make_icons.py         generates the icon PNGs from scratch
   serve.js              dependency-free static dev server
+  mock-supabase.js      PostgREST stand-in for tests and offline dev
 ```
 
 The rules live in `js/engine.js` as pure functions — no DOM, no timers — which
@@ -132,7 +181,9 @@ pick it up automatically.
 
 ## Saves
 
-Everything lives in one `localStorage` key (`pet-rock-sim`). Corrupt or partial
+The pet lives in one `localStorage` key (`pet-rock-sim`); the device identity
+sits in `pet-rock-device` so that starting over keeps the same leaderboard row,
+and any in-app Supabase credentials in `pet-rock-supabase`. Corrupt or partial
 saves are repaired on load rather than crashing, timestamps from the future
 can't bank free progress, and if storage is blocked entirely (private mode) the
 game still runs — it just won't remember. *Start over* in the **More** tab wipes

@@ -7,6 +7,36 @@
 export const SAVE_KEY = 'pet-rock-sim';
 export const SAVE_VERSION = 1;
 
+/**
+ * Online leaderboard. Fill these in with your own Supabase project to give
+ * every visitor of your deployed site one shared, worldwide board; leave
+ * them empty and the game runs happily offline against simulated rivals.
+ *
+ *   1. supabase.com -> New project (the free tier is plenty)
+ *   2. SQL Editor -> paste and run supabase/schema.sql from this repo
+ *   3. Project Settings -> API -> copy the Project URL and the `anon`
+ *      public key into the two strings below, then redeploy
+ *
+ * The anon key is meant to be public — it identifies the project, it does
+ * not grant access. Row level security and the submit_pet() function in
+ * schema.sql are what actually protect the data, so committing it here is
+ * expected. Never put the `service_role` key in this file.
+ */
+export const SUPABASE = {
+  url: '',
+  anonKey: '',
+};
+
+/** How the app talks to Supabase once it is configured. */
+export const ONLINE = {
+  /** Don't refetch the board more often than this. */
+  boardMaxAgeMs: 45000,
+  /** Minimum gap between two score submissions. */
+  submitCooldownMs: 12000,
+  /** How many keepers to show. */
+  boardLimit: 100,
+};
+
 /** Care stats. `decay` is points lost per real-world hour. */
 export const STATS = [
   { id: 'clean', label: 'Clean', icon: '🧼', decay: 4.5, low: 'grubby' },

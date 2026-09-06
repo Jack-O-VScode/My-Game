@@ -71,11 +71,9 @@
         </button>
         <span class="standing" id="standing"></span>
       </div>
+      <p class="net-line" id="board-status" role="status"></p>
       <ol class="board" id="board"></ol>
-      <p class="fine-print">
-        Rival keepers are simulated on your device — the game has no server, so nothing
-        you do here is uploaded and nobody else can see your rock.
-      </p>
+      <p class="fine-print" id="board-note"></p>
     </section>
 
     <!-- ------------------------------ MORE ------------------------------ -->
@@ -88,6 +86,16 @@
         <h3>Install the app</h3>
         <p class="hint" id="install-hint">Add Pet Rock to your home screen or desktop and it works offline.</p>
         <button class="btn primary" id="install-btn" type="button">Install</button>
+      </div>
+
+      <div class="card">
+        <h3>Online leaderboard</h3>
+        <p class="hint" id="online-status">Checking…</p>
+        <div class="btn-row">
+          <button class="btn" id="online-config" type="button">Connect Supabase</button>
+          <button class="btn ghost" id="online-clear" type="button" hidden>Play offline</button>
+        </div>
+        <p class="hint" id="online-device"></p>
       </div>
 
       <div class="card">
@@ -118,6 +126,7 @@
           <li>Let it slide and XP drains instead: levels can and will go back down.</li>
           <li>Care actions and level-ups pay coins. Spend them in the boutique.</li>
           <li>Come back each day for a streak bonus.</li>
+          <li>One pet per device — your device keeps its own row on the board.</li>
         </ul>
       </div>
 

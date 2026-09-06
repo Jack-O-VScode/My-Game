@@ -68,9 +68,9 @@ export function sortEntries(entries, dir = 'desc') {
   });
 }
 
-/** Full board: rivals plus the player, sorted, with 1-based ranks. */
-export function board(state, dir = 'desc', now = Date.now()) {
-  const player = {
+/** This device's own row, always built from live local state. */
+function playerEntry(state) {
+  return {
     id: 'player',
     keeper: state.playerName || 'You',
     rock: state.rockName || 'Pebbles',
@@ -78,13 +78,27 @@ export function board(state, dir = 'desc', now = Date.now()) {
     xp: Math.floor(state.xp),
     isPlayer: true,
   };
-  const sorted = sortEntries([...rivals(now), player], dir);
+}
+
+/**
+ * Full board, sorted, with 1-based ranks.
+ *
+ * `remote` is the live Supabase board when one is connected, and null
+ * otherwise — in which case the simulated practice rivals stand in. The
+ * player's own remote row is dropped in favour of local state: a level
+ * gained seconds ago has not been submitted yet, and a board disagreeing
+ * with the header would just look broken.
+ */
+export function board(state, dir = 'desc', now = Date.now(), remote = null) {
+  const online = Array.isArray(remote) && remote.length > 0;
+  const others = online ? remote.filter((e) => !e.isPlayer) : rivals(now);
+  const sorted = sortEntries([...others, playerEntry(state)], dir);
   return sorted.map((entry, i) => ({ ...entry, rank: i + 1 }));
 }
 
 /** The player's standing, counted from the top regardless of sort order. */
-export function standing(state, now = Date.now()) {
-  const ranked = board(state, 'desc', now);
+export function standing(state, now = Date.now(), remote = null) {
+  const ranked = board(state, 'desc', now, remote);
   const me = ranked.find((e) => e.isPlayer);
   return { place: me ? me.rank : ranked.length, total: ranked.length };
 }
