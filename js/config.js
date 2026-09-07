@@ -23,8 +23,8 @@ export const SAVE_VERSION = 1;
  * expected. Never put the `service_role` key in this file.
  */
 export const SUPABASE = {
-  url: '',
-  anonKey: '',
+  url: 'https://dkxuivfyivwskhwfakyx.supabase.co',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRreHVpdmZ5aXZ3c2tod2Zha3l4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MzY1OTUsImV4cCI6MjEwNDMxMjU5NX0.HbA6Edop6MA6GItCHeP21N-a83lCXMcJrCfpugAH0aI',
 };
 
 /** How the app talks to Supabase once it is configured. */
