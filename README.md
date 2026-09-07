@@ -67,17 +67,18 @@ unconnected and you play against simulated rivals instead.
 > **New here?** [SETUP.md](SETUP.md) walks the whole thing end to end —
 > backend, deploy, and checking multiplayer works — in about 10 minutes.
 
-Off by default — the game is fully playable with no backend at all. To switch on
-the shared board:
+This repo is already pointed at a Supabase project, so everyone who opens the
+deployed site shares one board with nothing to configure. The game also runs
+perfectly well with the `SUPABASE` block in [`js/config.js`](js/config.js) left
+empty — it just plays against simulated rivals instead.
 
-1. Create a free project at [supabase.com](https://supabase.com).
-2. **SQL Editor → New query**, paste all of [`supabase/schema.sql`](supabase/schema.sql), run it.
-3. **Project Settings → API**, copy the **Project URL** and the **`anon` public**
-   key into `SUPABASE` at the top of [`js/config.js`](js/config.js), then redeploy.
-
-Everyone who opens your deployed site now shares one board. To try it before
-committing keys, use **More → Connect Supabase** in the app and paste the same
-two values — they're saved on that device only.
+To point it at your own project: create one at
+[supabase.com](https://supabase.com), run [`supabase/schema.sql`](supabase/schema.sql)
+in its SQL editor, then put the project URL (always `https://<ref>.supabase.co`)
+and its **`anon` / public** key into `SUPABASE`. [SETUP.md](SETUP.md) has the
+detail, including where the dashboard hides each value. To try a project before
+committing keys, use **More → Connect Supabase** in the app — that saves on one
+device only.
 
 **One pet per device.** There are no accounts or logins. On first run a device
 mints a random `device_id` and a private `secret`, kept outside the save file.

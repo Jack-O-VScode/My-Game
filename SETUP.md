@@ -1,162 +1,179 @@
 # Getting Pet Rock live and multiplayer
 
-Everything from where the code is now to a public website with a shared
-leaderboard. About **10 minutes**, all free, no credit card.
+Your site will be at **https://jack-o-vscode.github.io/My-Game/**
 
-You need a GitHub account (you have one) and a Supabase account (step 1
-makes one). Do the parts in order — Supabase first, so the site only has to
-be deployed once.
+## Where this repo already is
 
-Your site will end up at **https://jack-o-vscode.github.io/My-Game/**
-
----
-
-## Part 1 — Create the backend (~5 min)
-
-This is what makes the leaderboard shared instead of simulated.
-
-**1.1** Go to [supabase.com](https://supabase.com) → **Start your project** →
-sign in with GitHub.
-
-**1.2** **New project**:
-
-| Field | What to put |
+| | |
 | --- | --- |
-| Name | `pet-rock` (anything) |
-| Database password | Click generate. You won't need it again, but save it somewhere. |
-| Region | Whichever is closest to you |
-| Plan | Free |
+| ✅ Game code, tests, deploy workflow | pushed |
+| ✅ Supabase keys wired into [`js/config.js`](js/config.js) | project `dkxuivfyivwskhwfakyx` |
+| ⬜ **Database tables created** | Step 1 below — skip if you already ran it |
+| ⬜ **GitHub Pages switched on** | Step 2 below |
 
-Click **Create new project** and wait ~2 minutes while it provisions.
+Two steps left, about 4 minutes. Neither can be automated: creating tables
+needs your database, and creating a Pages site needs admin rights that the
+Actions token deliberately does not have.
 
-**1.3 Create the table.** In the left sidebar: **SQL Editor** → **New query**.
-Open [`supabase/schema.sql`](supabase/schema.sql) in this repo, copy the
-**whole file**, paste it into the editor, click **Run**.
-
-You should see **"Success. No rows returned"**. That's correct — it creates a
-table, a security policy and a function, none of which return rows.
-
-**1.4 Copy your two keys.** Left sidebar: **Project Settings** (the gear) →
-**API**. You need:
-
-- **Project URL** — looks like `https://abcdefghijkl.supabase.co`
-- The key labelled **`anon`** / **`public`** — a long string starting `eyJ…`
-  (some newer dashboards call this the **publishable** key)
-
-> ⚠️ Take the **anon / public** key only. Never copy the one marked
-> `service_role` or `secret` — that one bypasses all security and must never
-> go in a website.
+*(Forked this repo, or want your own backend? See
+[Using a different Supabase project](#using-a-different-supabase-project).)*
 
 ---
 
-## Part 2 — Put the keys in the app (~2 min)
+## Step 1 — Create the tables (~2 min)
 
-The anon key is *designed* to be public and belongs in the code. Security
-comes from `schema.sql`, not from hiding this key.
+In the [Supabase dashboard](https://supabase.com/dashboard) for your project:
+**SQL Editor** (sidebar) → **New query**.
 
-Open [`js/config.js`](js/config.js) on GitHub → click the **pencil** (Edit) →
-find this near the top and fill in both strings:
+Open [`supabase/schema.sql`](supabase/schema.sql), copy the **whole file**,
+paste it into the editor, click **Run**.
 
-```js
-export const SUPABASE = {
-  url: 'https://abcdefghijkl.supabase.co',
-  anonKey: 'eyJhbGciOi…your long anon key…',
-};
-```
+You want **"Success. No rows returned"**. That is the correct result — the
+script creates a table, a security policy and a function, none of which
+return rows. Running it twice is safe.
 
-Click **Commit changes**.
+To confirm: **Table Editor** in the sidebar should now list a **`pets`**
+table (empty until someone plays).
 
 ---
 
-## Part 3 — Put the site on the internet (~2 min)
+## Step 2 — Put the site on the internet (~2 min)
 
-**3.1** Go to
+**2.1** Go to
 [Settings → Pages](https://github.com/Jack-O-VScode/My-Game/settings/pages).
 
-**3.2** Under **Build and deployment → Source**, choose **GitHub Actions**
-from the dropdown. There is nothing to save — it applies immediately.
+**2.2** Under **Build and deployment → Source**, choose **GitHub Actions**.
+There is no save button — it applies immediately.
 
-This step cannot be automated: creating a Pages site needs admin rights that
-the Actions token deliberately does not have.
+**2.3** Open the [Actions tab](https://github.com/Jack-O-VScode/My-Game/actions).
+**Deploy to GitHub Pages** should go green in about a minute. If the newest
+run is red *from before* you did 2.2, open it → **Re-run all jobs**.
 
-**3.3** Go to the [Actions tab](https://github.com/Jack-O-VScode/My-Game/actions).
-The **Deploy to GitHub Pages** run should go green in about a minute. If the
-most recent run is red from before you did 3.2, open it and click
-**Re-run all jobs**.
-
-**3.4** Open **https://jack-o-vscode.github.io/My-Game/** — your rock is live.
+**2.4** Visit **https://jack-o-vscode.github.io/My-Game/**.
 
 ---
 
-## Part 4 — Check multiplayer actually works (~2 min)
+## Step 3 — Check multiplayer works (~2 min)
 
-**4.1** Open the site on **two different devices** (phone + laptop, or a
-normal window + a private window). Each counts as its own device and gets its
-own pet — that's the "one pet per device" rule.
+**3.1** Open the site on **two devices** — phone and laptop, or a normal
+window and a private window. Each is its own device with its own pet.
 
-**4.2** On each, go to **More** and set a different **Keeper** name, so you
-can tell them apart.
+**3.2** On each, go to **More** and set a different **Keeper** name.
 
-**4.3** Tap **Ranks** on both. You want a green line reading:
+**3.3** Open **Ranks** on both. You want the green line:
 
 > 🌐 Live · 2 keepers online · updated just now
 
-and both names in the list, with yours highlighted. Tap **Highest first** to
-flip the order — it works the same on a live board.
+with both names listed and yours highlighted. Tap **Highest first** to
+reverse the order — it works the same on a live board.
 
-**4.4** For proof from the other side: in Supabase, **Table Editor** →
-**pets**. One row per device, with the levels and names you just saw.
+**3.4** For proof from the database side: Supabase → **Table Editor** →
+**pets**. One row per device, with the names and levels you just saw.
 
-If it says **🎮 Practice mode** instead, the keys did not reach the deployed
-site — see Troubleshooting.
+Anything else on that status line? See [Troubleshooting](#troubleshooting).
 
 ---
 
-## Part 5 — Install it as an app
+## Step 4 — Install it as an app
 
 | Device | How |
 | --- | --- |
-| **Android** — Chrome | Open the site → **More → Install**, or browser menu ⋮ → **Install app** |
+| **Android** — Chrome | **More → Install**, or browser menu ⋮ → **Install app** |
 | **iPhone / iPad** — **Safari only** | **Share** ⬆️ → **Add to Home Screen** → **Add**. Chrome and Firefox on iOS cannot install web apps. |
 | **Windows** — Chrome/Edge | Install icon in the address bar, or menu → **Apps → Install this site as an app** |
 
-Installed, it opens full screen, keeps its own save, and plays offline. Share
-the URL with anyone — they join the same leaderboard automatically.
+It then opens full screen, keeps its own save, and plays offline. Share the
+URL with anyone — they join the same leaderboard automatically, with nothing
+to configure.
 
 ---
 
 ## Troubleshooting
 
-The app tells you what is wrong on the **Ranks** screen. Match the message:
+The app names the problem on the **Ranks** screen. Find your message:
 
 | Message | Cause | Fix |
 | --- | --- | --- |
-| 🎮 **Practice mode** | No keys in the deployed site | Part 2 — check both strings are filled in and the commit deployed (Actions tab is green) |
-| ⚠️ **Supabase rejected the key** | Wrong key, or `schema.sql` never ran | Re-copy the **anon/public** key; re-run Part 1.3 |
-| ⚠️ **Table or function missing** | `schema.sql` not run on *this* project | Part 1.3, making sure you are in the right project |
-| ⚠️ **Could not reach Supabase** | Typo in the URL, or the project is paused | Check the URL; open the Supabase dashboard and resume the project |
-| ⚠️ **did not answer in time** | Slow network or a cold project | Tap the status line to retry |
+| ⚠️ **Table or function missing** | `schema.sql` never ran on this project | Step 1 |
+| 🎮 **Practice mode** | No keys in the deployed site | Only happens on a fork — see below |
+| ⚠️ **Supabase rejected the key** | Key wrong, or `schema.sql` ran on a *different* project | Check the ref in the key matches the project you ran the SQL in |
+| ⚠️ **Could not reach Supabase** | Project paused, or a typo in the URL | Open the dashboard and resume the project |
+| ⚠️ **did not answer in time** | Slow network, or a cold project waking up | Tap the status line to retry |
 | Board shows only you | Nobody else has opened the site yet | Open it on a second device |
 
-**Still stuck?** Open the site, press <kbd>F12</kbd> → **Console** on a
-desktop browser. The app logs the real reason there.
+On a desktop browser, <kbd>F12</kbd> → **Console** shows the underlying error.
+
+---
+
+## Using a different Supabase project
+
+Only needed if you forked this repo, or want to move to another project.
+
+**1. Create it.** [supabase.com](https://supabase.com) → sign in with GitHub →
+**New project**. Generate the database password (you will not need it again),
+pick the nearest region, Free plan. Provisioning takes ~2 minutes.
+
+**2. Run** [`supabase/schema.sql`](supabase/schema.sql) as in Step 1.
+
+**3. Find your two values.** The dashboard has reorganised these more than
+once, so the reliable route is your project **ref** — the code in your
+dashboard URL:
+
+```
+https://supabase.com/dashboard/project/dkxuivfyivwskhwfakyx/...
+                                        └──── the ref ────┘
+```
+
+- **Project URL** is always **`https://<ref>.supabase.co`**. You never have to
+  find it in the UI. (Current dashboards do show it under
+  **Settings → Data API**; older ones had it under *Settings → API*.)
+- **anon key** — **Settings → API Keys**. Take the one labelled **`anon`** /
+  **`public`**; on newer projects this may be called the **publishable** key,
+  and classic ones live under a **Legacy** tab. Both work.
+
+> ⚠️ Never use the key marked **`service_role`** or **`secret`**. It bypasses
+> every protection in `schema.sql` and must never appear in a website. If one
+> ever leaks, rotate it in the dashboard immediately.
+>
+> A quick sanity check: paste the key into [jwt.io](https://jwt.io) — the
+> payload must say `"role": "anon"`. The same payload contains your `ref`.
+
+**4. Put them in** [`js/config.js`](js/config.js):
+
+```js
+export const SUPABASE = {
+  url: 'https://<your ref>.supabase.co',
+  anonKey: 'eyJhbGciOi…',
+};
+```
+
+Commit, and Pages redeploys itself. To try a project *before* committing to
+it, use **More → Connect Supabase** in the app — that saves on your device
+only, and overrides the built-in keys until you press **Play offline**.
 
 ---
 
 ## Things worth knowing
 
 - **Free Supabase projects pause after ~7 days with no activity.** The board
-  falls back to practice mode until you open the dashboard and resume it. If
-  people play regularly, it never pauses.
-- **One pet per device, no accounts.** Clearing site data, or using a
-  different browser, means a new device and a fresh pet. *Start over*
-  replaces your row rather than leaving a duplicate.
-- **Scores are self-reported.** The server clamps them to sane ranges and
-  stops anyone writing to another device's row, but it cannot tell whether a
-  level was really earned. Friendly competition, not a ranked ladder.
-- **Changing the game later:** edit, commit, and Pages redeploys itself. The
-  service worker fetches code from the network first, so a refresh is enough
-  to pick up a new version.
-- **Custom domain:** point a `CNAME` record at `jack-o-vscode.github.io`,
-  then set it under Settings → Pages → Custom domain. Keep *Enforce HTTPS*
-  on — installing a PWA requires it.
+  drops to practice mode until you resume it from the dashboard. Regular
+  players keep it awake.
+- **The anon key is public on purpose.** It names the project; it does not
+  grant access. `schema.sql` is what protects the data: read-only row level
+  security, `secret` not readable at all, and every write forced through
+  `submit_pet()`, which verifies the device secret and clamps its input.
+  The flip side of a public repo is that anyone can read that key and add
+  rows to the board. They cannot read secrets, overwrite another device's
+  row, or post out-of-range values — but junk entries are possible. If that
+  ever happens, rate limiting in the SQL function is the fix.
+- **One pet per device, no accounts.** Clearing site data or switching
+  browsers gives you a new device and a fresh pet. *Start over* replaces your
+  row rather than leaving a duplicate behind.
+- **Scores are self-reported.** The server clamps them and enforces one row
+  per device, but cannot tell whether a level was truly earned. Friendly
+  competition, not a ranked ladder.
+- **Shipping changes:** edit, commit, and Pages redeploys. The service worker
+  fetches code network-first, so one refresh picks up a new version.
+- **Custom domain:** point a `CNAME` at `jack-o-vscode.github.io`, set it under
+  Settings → Pages → Custom domain, and keep *Enforce HTTPS* on — installing
+  a PWA requires it.
