@@ -64,6 +64,9 @@ unconnected and you play against simulated rivals instead.
 
 ## Online leaderboard
 
+> **New here?** [SETUP.md](SETUP.md) walks the whole thing end to end —
+> backend, deploy, and checking multiplayer works — in about 10 minutes.
+
 Off by default — the game is fully playable with no backend at all. To switch on
 the shared board:
 

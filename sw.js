@@ -3,7 +3,7 @@
  * once installed. Bump CACHE when shipping new files.
  */
 
-const CACHE = 'pet-rock-v1.1.0';
+const CACHE = 'pet-rock-v1.2.0';
 
 const SHELL = [
   './',
@@ -48,6 +48,10 @@ self.addEventListener('message', (event) => {
   if (event.data === 'skip-waiting') self.skipWaiting();
 });
 
+const isCode = (pathname, destination) =>
+  destination === 'script' || destination === 'style' || destination === 'document' ||
+  /\.(?:js|css|webmanifest|html)$/.test(pathname);
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -72,7 +76,30 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Everything else: serve from cache, refresh it in the background.
+  // Code and markup: always prefer the network, fall back to the cache.
+  //
+  // Cache-first would hand back the previous release's JavaScript on the
+  // first load after a deploy — so a freshly deployed change (new Supabase
+  // keys, say) would look like it had not taken effect until the second
+  // visit. These files are a few KB, so a round-trip is cheap, and the
+  // cache still covers being offline entirely.
+  if (isCode(url.pathname, request.destination)) {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      try {
+        const fresh = await fetch(request);
+        if (fresh && fresh.ok) cache.put(request, fresh.clone());
+        return fresh;
+      } catch {
+        return (await cache.match(request)) ||
+          new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+      }
+    })());
+    return;
+  }
+
+  // Icons and other static assets never change within a release: serve
+  // them from the cache and refresh in the background.
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const hit = await cache.match(request);
