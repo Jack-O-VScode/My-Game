@@ -5,12 +5,19 @@
  */
 
 import {
-  ACTIONS, DEFAULT_EQUIPPED, FREE_ITEMS, SAVE_VERSION,
-  STATS, TUNING, itemById, moodFor, levelReward, xpForLevel,
+  ACTIONS, DEFAULT_EQUIPPED, FREE_ITEMS, KEEPER_ADJECTIVES, KEEPER_NOUNS,
+  LEGACY_KEEPER_NAME, SAVE_VERSION, STATS, TUNING, itemById, moodFor,
+  levelReward, xpForLevel,
 } from './config.js';
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const HOUR = 3600000;
+
+/** A friendly default so unnamed keepers are still telling apart. */
+export function randomKeeperName() {
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+  return `${pick(KEEPER_ADJECTIVES)} ${pick(KEEPER_NOUNS)}`;
+}
 
 export function newState(now = Date.now()) {
   const stats = {};
@@ -18,7 +25,7 @@ export function newState(now = Date.now()) {
   return {
     v: SAVE_VERSION,
     rockName: 'Pebbles',
-    playerName: 'You',
+    playerName: randomKeeperName(),
     level: 1,
     xp: 0,
     bestLevel: 1,
@@ -59,6 +66,9 @@ export function normalise(raw, now = Date.now()) {
   s.streak = Math.max(0, Math.floor(Number(raw.streak) || 0));
   s.rockName = String(raw.rockName || base.rockName).slice(0, 18) || base.rockName;
   s.playerName = String(raw.playerName || base.playerName).slice(0, 18) || base.playerName;
+  // Saves from before the shared board all carried the same placeholder,
+  // which would show up as a wall of identical "You" rows.
+  if (s.playerName === LEGACY_KEEPER_NAME) s.playerName = randomKeeperName();
 
   const ownedSet = new Set(FREE_ITEMS);
   if (Array.isArray(raw.owned)) {

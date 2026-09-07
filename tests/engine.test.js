@@ -267,3 +267,29 @@ test('sortEntries breaks ties on xp then name', () => {
   ];
   assert.deepEqual(sortEntries(entries, 'desc').map((e) => e.keeper), ['C', 'A', 'B']);
 });
+
+/* ---------------------------- keeper names ---------------------------- */
+
+test('fresh keepers get distinguishable names, not a shared placeholder', () => {
+  const names = new Set();
+  for (let i = 0; i < 40; i += 1) {
+    const name = newState(T0).playerName;
+    assert.notEqual(name, 'You', 'the old placeholder is gone');
+    assert.match(name, /^[A-Z][a-z]+ [A-Z][a-z]+$/, name);
+    assert.ok(name.length <= 18, `${name} fits the name limit`);
+    names.add(name);
+  }
+  assert.ok(names.size > 5, `expected variety, got ${names.size} distinct names`);
+});
+
+test('saves from before the shared board stop being called "You"', () => {
+  const migrated = normalise({ playerName: 'You', level: 4 }, T0);
+  assert.notEqual(migrated.playerName, 'You');
+  assert.equal(migrated.level, 4, 'the rest of the save is untouched');
+});
+
+test('a name the player chose is never overwritten', () => {
+  for (const chosen of ['Jack', 'you', 'Youssef', 'Mossy Quartz']) {
+    assert.equal(normalise({ playerName: chosen }, T0).playerName, chosen);
+  }
+});

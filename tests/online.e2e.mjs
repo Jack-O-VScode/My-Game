@@ -50,7 +50,26 @@ await wait(900);
 const browser = await chromium.launch();
 const errors = [];
 
+// Never the built-in project: the app now ships with real credentials, so
+// an unconfigured device would publish test pets straight into the live
+// leaderboard. Devices that are not meant to reach the mock are pointed at
+// a port nothing listens on instead.
+const DEAD_END = 'http://localhost:1';
+
+/**
+ * Seeds one device before the app boots.
+ *
+ * Every device gets an explicit project override, including the ones that
+ * are not meant to reach the mock: the app ships with real credentials, so
+ * an unconfigured device here would publish test pets straight into the
+ * live leaderboard. Devices that should not reach the mock are pointed at
+ * a port nothing listens on.
+ */
 const seed = (level, keeper, rock, withConfig) => `
+  localStorage.setItem('pet-rock-supabase', JSON.stringify({
+    url: ${JSON.stringify(withConfig ? API : DEAD_END)},
+    anonKey: ${JSON.stringify(KEY)},
+  }));
   if (!localStorage.getItem('pet-rock-sim')) {
     localStorage.setItem('pet-rock-sim', JSON.stringify({
       v: 1, rockName: ${JSON.stringify(rock)}, playerName: ${JSON.stringify(keeper)},
@@ -61,7 +80,6 @@ const seed = (level, keeper, rock, withConfig) => `
       lastTick: Date.now(), createdAt: Date.now(), sound: false, sortDir: 'desc',
       lastDay: new Date().toISOString().slice(0,10),
     }));
-    ${withConfig ? `localStorage.setItem('pet-rock-supabase', JSON.stringify({ url: ${JSON.stringify(API)}, anonKey: ${JSON.stringify(KEY)} }));` : ''}
   }`;
 
 async function open(level, keeper, rock, withConfig) {
@@ -92,8 +110,9 @@ const rows = (page) => page.$$eval('.row-entry', (list) => list.map((el) => ({
 const a = await open(7, 'Ada', 'Granite', false);
 await a.page.click('.tab[data-screen="more"]');
 await wait(300);
-check('starts in practice mode',
-  (await a.page.textContent('#online-status')).includes('Not connected'));
+check('does not start on the test backend',
+  !(await a.page.textContent('#online-status')).includes('Connected'),
+  await a.page.textContent('#online-status'));
 
 await a.page.click('#online-config');
 await wait(300);
@@ -105,6 +124,8 @@ await wait(1200);
 check('connect form reports a live connection',
   (await a.page.textContent('#online-status')).includes('Connected'),
   await a.page.textContent('#online-status'));
+check('connect form saved the project it was given',
+  JSON.parse(await a.page.evaluate(() => localStorage.getItem('pet-rock-supabase'))).url === API);
 
 /* -- device B joins, already configured ---------------------------------- */
 const b = await open(14, 'Boris', 'Tank', true);

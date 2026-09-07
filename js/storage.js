@@ -4,7 +4,7 @@
  * must still be playable (just not persistent) when that happens.
  */
 
-import { SAVE_KEY } from './config.js';
+import { LEGACY_KEEPER_NAME, SAVE_KEY } from './config.js';
 import { newState, normalise } from './engine.js';
 
 let warned = false;
@@ -19,7 +19,14 @@ export function load(now = Date.now()) {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return { state: newState(now), fresh: true };
-    return { state: normalise(JSON.parse(raw), now), fresh: false };
+    const parsed = JSON.parse(raw);
+    return {
+      state: normalise(parsed, now),
+      fresh: false,
+      // normalise() replaces the old shared placeholder name; the app
+      // mentions the new one rather than silently renaming the player.
+      renamed: parsed?.playerName === LEGACY_KEEPER_NAME,
+    };
   } catch (err) {
     warn(err);
     return { state: newState(now), fresh: true };

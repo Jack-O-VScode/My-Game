@@ -84,6 +84,26 @@ export function levelReward(level) {
   return 25 + level * 5;
 }
 
+/**
+ * Default keeper names. Before the board was shared, every player was
+ * just "You"; on a live leaderboard that made everyone look identical, so
+ * a new keeper gets a random one of these until they pick their own.
+ */
+export const KEEPER_ADJECTIVES = [
+  'Mossy', 'Sunny', 'Brave', 'Quiet', 'Lucky', 'Jolly', 'Swift', 'Cosy',
+  'Merry', 'Bold', 'Wily', 'Chipper', 'Sleepy', 'Snug', 'Plucky', 'Nimble',
+  'Sturdy', 'Cheery', 'Dusty', 'Rugged', 'Breezy', 'Humble', 'Speckled', 'Rowdy',
+];
+
+export const KEEPER_NOUNS = [
+  'Quartz', 'Pebble', 'Boulder', 'Geode', 'Flint', 'Basalt', 'Slate', 'Cobble',
+  'Gravel', 'Marble', 'Onyx', 'Opal', 'Jasper', 'Shale', 'Granite', 'Sandstone',
+  'Chalk', 'Pumice', 'Amber', 'Mica', 'Cairn', 'Ridge', 'Scree', 'Bedrock',
+];
+
+/** The old default, migrated away from on load. */
+export const LEGACY_KEEPER_NAME = 'You';
+
 export const MOODS = [
   { id: 'radiant', min: 85, label: 'Radiant', blurb: 'Positively glowing.' },
   { id: 'happy', min: 65, label: 'Content', blurb: 'A well-kept rock.' },

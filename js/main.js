@@ -435,6 +435,9 @@ function boot() {
 
   if (loaded.fresh) {
     toast('Meet your new pet rock 🪨', 'good');
+    setTimeout(() => toast(`You are ${state.playerName} — rename in More`, ''), 2600);
+  } else if (loaded.renamed) {
+    setTimeout(() => toast(`You are ${state.playerName} — rename in More`, ''), 1200);
   } else if (away.elapsedMs > 5 * 60000) {
     const capped = away.elapsedMs > TUNING.offlineCapHours * 3600000;
     toast(`Away for ${humanDuration(away.elapsedMs)}${capped ? ' (capped)' : ''}`, '');
