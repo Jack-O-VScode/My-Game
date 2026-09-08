@@ -1,10 +1,6 @@
 /**
- * Supabase-backed online leaderboard.
- *
- * There are no accounts. Each device mints a device_id plus a private
- * secret on first run and keeps them outside the save file, so "Start
- * over" replaces the pet on the board rather than adding a second one:
- * one pet per device, for the life of that browser profile.
+ * Supabase transport: project configuration, calling database functions,
+ * and reading the shared leaderboard. Accounts are handled in account.js.
  *
  * Everything here fails soft. If Supabase is not configured, the network
  * is down, or the server answers with an error, the caller gets a plain
@@ -14,15 +10,18 @@
 
 import { SUPABASE } from './config.js';
 
-/** Kept apart from the save so wiping the pet keeps the same board row. */
-const DEVICE_KEY = 'pet-rock-device';
-/** Local override of the built-in keys, for trying it out before deploying. */
+/** Local override of the built-in keys, for trying a project out. */
 const CONFIG_KEY = 'pet-rock-supabase';
 
 const TIMEOUT_MS = 8000;
 const BOARD_LIMIT = 100;
-/** `select=*` would touch the secret column, which clients may not read. */
-const COLUMNS = 'device_id,keeper,rock_name,level,xp,best_level,care,updated_at';
+
+/**
+ * Named columns only: `select=*` would reach for password hashes, which
+ * carry no grant. `accounts(username)` follows the foreign key, and
+ * `equipped` is what lets the board draw everyone's actual rock.
+ */
+const COLUMNS = 'account_id,rock_name,level,xp,best_level,care,equipped,badges,updated_at,accounts(username)';
 
 /* ------------------------------- storage ------------------------------ */
 
@@ -43,25 +42,6 @@ function writeJson(key, value) {
   } catch {
     return false;
   }
-}
-
-function uuid() {
-  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-  const bytes = new Uint8Array(16);
-  globalThis.crypto.getRandomValues(bytes);
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-/** This device's identity on the leaderboard, created once and reused. */
-export function identity() {
-  const saved = readJson(DEVICE_KEY);
-  if (saved && typeof saved.id === 'string' && typeof saved.secret === 'string') return saved;
-  const fresh = { id: uuid(), secret: uuid() };
-  writeJson(DEVICE_KEY, fresh);
-  return fresh;
 }
 
 /* -------------------------------- config ------------------------------ */
@@ -154,23 +134,35 @@ async function request(path, options = {}) {
   }
 }
 
-/** Publishes this device's pet. The server clamps whatever it is sent. */
-export async function submitPet(state, care) {
-  const me = identity();
-  return request('/rest/v1/rpc/submit_pet', {
+/**
+ * Calls a database function. Errors come back with the message the
+ * function raised ("That username is taken"), which is written to be
+ * shown to the player as-is.
+ */
+export async function rpc(name, body) {
+  const result = await request(`/rest/v1/rpc/${name}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      p_device: me.id,
-      p_secret: me.secret,
-      p_keeper: state.playerName,
-      p_rock: state.rockName,
-      p_level: state.level,
-      p_xp: Math.floor(state.xp),
-      p_best: state.bestLevel,
-      p_care: Math.round(care),
-    }),
+    body: JSON.stringify(body || {}),
   });
+
+  if (!result.ok) {
+    let message = '';
+    try {
+      message = JSON.parse(result.detail || '{}').message || '';
+    } catch {
+      message = '';
+    }
+    return { ...result, message };
+  }
+
+  const text = await result.res.text().catch(() => '');
+  if (!text) return { ok: true, data: null };
+  try {
+    return { ok: true, data: JSON.parse(text) };
+  } catch {
+    return { ok: false, error: 'bad-response' };
+  }
 }
 
 const clampInt = (value, lo, hi, fallback) => {
@@ -189,34 +181,37 @@ const text = (value, fallback) => {
  * Turns rows from PostgREST into leaderboard entries. Pure, and defensive:
  * these rows are written by other players, so nothing is trusted.
  */
-export function rowsToEntries(rows, deviceId) {
+export function rowsToEntries(rows, accountId) {
   if (!Array.isArray(rows)) return [];
   return rows
-    .filter((row) => row && typeof row === 'object' && typeof row.device_id === 'string')
+    .filter((row) => row && typeof row === 'object' && typeof row.account_id === 'string')
     .map((row) => ({
-      id: `pet-${row.device_id}`,
-      keeper: text(row.keeper, 'Keeper'),
+      id: `pet-${row.account_id}`,
+      keeper: text(row.accounts?.username, 'Keeper'),
       rock: text(row.rock_name, 'Pebbles'),
       level: clampInt(row.level, 1, 999, 1),
       xp: clampInt(row.xp, 0, 1000000, 0),
       care: clampInt(row.care, 0, 100, 0),
-      isPlayer: row.device_id === deviceId,
+      badges: clampInt(row.badges, 0, 999, 0),
+      equipped: row.equipped && typeof row.equipped === 'object' ? row.equipped : {},
+      isPlayer: row.account_id === accountId,
       online: true,
     }));
 }
 
 /** Fetches the top of the board. */
-export async function fetchBoard(limit = BOARD_LIMIT) {
+export async function fetchBoard(accountId, limit = BOARD_LIMIT) {
   const query = `/rest/v1/pets?select=${COLUMNS}&order=level.desc,xp.desc&limit=${limit}`;
   const result = await request(query, { method: 'GET' });
   if (!result.ok) return result;
   const rows = await result.res.json().catch(() => null);
   if (!Array.isArray(rows)) return { ok: false, error: 'bad-response' };
-  return { ok: true, entries: rowsToEntries(rows, identity().id) };
+  return { ok: true, entries: rowsToEntries(rows, accountId) };
 }
 
 /** Human-readable reason for a failed call, for the status line. */
-export function describeError(error, detail = '') {
+export function describeError(error, detail = '', message = '') {
+  if (message) return message;
   switch (error) {
     case 'not-configured': return 'No Supabase project connected';
     case 'offline': return 'This device is offline';
@@ -225,7 +220,7 @@ export function describeError(error, detail = '') {
     case 'bad-response': return 'Supabase sent an unexpected reply';
     case 'http-401':
     case 'http-403': return 'Supabase rejected the key — check the anon key and that schema.sql ran';
-    case 'http-404': return 'Table or function missing — run supabase/schema.sql';
+    case 'http-404': return 'Tables or functions missing — run supabase/schema.sql';
     default:
       return detail ? `Supabase error (${error})` : `Supabase error (${error})`;
   }

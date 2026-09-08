@@ -356,6 +356,63 @@ h3 { margin: 0 0 8px; font-size: 15px; letter-spacing: .2px; }
 }
 .row-entry.me .lvl { background: var(--accent); border-color: var(--accent); color: #2a1a06; }
 
+/* ---------------------------- goals screen --------------------------- */
+
+.quests { display: flex; flex-direction: column; gap: 8px; }
+.quest {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  border-radius: 15px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.quest.done { border-color: rgba(95,214,162,.55); background: linear-gradient(90deg, rgba(95,214,162,.13), var(--surface)); }
+.quest-icon { font-size: 21px; line-height: 1; }
+.quest-main { flex: 1; min-width: 0; }
+.quest-name { font-size: 13.5px; font-weight: 600; }
+.quest-text { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.quest-bar { height: 5px; margin-top: 7px; border-radius: 999px; background: #17131f; overflow: hidden; }
+.quest-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width .3s ease; }
+.quest.done .quest-fill { background: var(--good); }
+.quest-prize { font-size: 12px; font-weight: 700; color: var(--gold); white-space: nowrap; }
+.quest.done .quest-prize { color: var(--good); }
+
+.sweep-note {
+  margin: 10px 2px 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.badge {
+  padding: 12px 8px;
+  border-radius: 15px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  text-align: center;
+}
+.badge.earned { border-color: var(--accent); background: linear-gradient(180deg, rgba(255,180,84,.13), var(--surface)); }
+.badge-icon { font-size: 25px; line-height: 1.1; filter: grayscale(1) opacity(.35); }
+.badge.earned .badge-icon { filter: none; }
+.badge-name { margin-top: 5px; font-size: 12px; font-weight: 600; }
+.badge-blurb { margin-top: 2px; font-size: 10.5px; color: var(--muted); line-height: 1.35; }
+
+/* rock thumbnails on the leaderboard */
+.row-rock {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 40px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #2a2739;
+}
+.row-rock svg { display: block; width: 100%; height: 100%; }
+.row-badges { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
 /* -------------------------------- cards ------------------------------ */
 
 .card {
@@ -427,7 +484,7 @@ h3 { margin: 0 0 8px; font-size: 15px; letter-spacing: .2px; }
   bottom: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 2px;
   padding: 6px 6px calc(var(--safe-bottom) + 6px);
   background: rgba(20,17,29,.92);
@@ -446,10 +503,10 @@ h3 { margin: 0 0 8px; font-size: 15px; letter-spacing: .2px; }
   border-radius: 12px;
   background: none;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10.5px;
   cursor: pointer;
 }
-.tab span { font-size: 19px; line-height: 1.1; filter: grayscale(.5) opacity(.75); }
+.tab span { font-size: 18px; line-height: 1.1; filter: grayscale(.5) opacity(.75); }
 .tab.is-active { color: var(--accent); }
 .tab.is-active span { filter: none; }
 
@@ -505,6 +562,20 @@ h3 { margin: 0 0 8px; font-size: 15px; letter-spacing: .2px; }
   background: #17131f;
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.modal .tabs { margin-bottom: 12px; }
+.modal-error { margin: 8px 0 0; font-size: 12.5px; color: #ff9a9a; min-height: 16px; }
+.modal-skip {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 6px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
 
 /* ------------------------------ keyframes ---------------------------- */
 

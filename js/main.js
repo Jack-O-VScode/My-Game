@@ -8,14 +8,19 @@ import {
   applyAction, buy, canBuy, careScore, claimDaily, equip, newState, simulate,
 } from './engine.js';
 import {
-  clearConfig, config as onlineConfig, describeError, fetchBoard, identity,
-  isConfigured, saveConfig, submitPet,
+  clearConfig, config as onlineConfig, describeError, fetchBoard,
+  isConfigured, saveConfig,
 } from './online.js';
+import {
+  accountId, isSignedIn, login, register, resume, signOut, sync, username,
+} from './account.js';
+import { QUEST_SWEEP_BONUS, update as updateGoals } from './achievements.js';
 import { load, save, wipe } from './storage.js';
 import { sfx, setEnabled } from './sfx.js';
 import {
-  bump, dialog, initUI, reactToCare, renderBoard, renderCare, renderMore,
-  renderShop, renderTop, setVersionLine, showInstall, showScreen, tickCooldowns, toast,
+  authDialog, bump, dialog, initUI, reactToCare, renderBoard, renderCare,
+  renderGoals, renderMore, renderShop, renderTop, setVersionLine, showInstall,
+  showScreen, tickCooldowns, toast,
 } from './ui.js';
 
 const APP_VERSION = '1.0.0';
@@ -31,7 +36,7 @@ let deferredInstall = null;
  * Everything the UI needs to know about the online board.
  * status: 'off' (no project connected) | 'loading' | 'live' | 'error'
  */
-let net = { status: 'off', entries: null, error: null, detail: '', fetchedAt: 0, deviceId: null };
+let net = { status: 'off', entries: null, error: null, detail: '', fetchedAt: 0, account: null };
 let lastSubmitSig = null;
 let lastSubmitAt = 0;
 let boardInFlight = false;
@@ -59,6 +64,7 @@ function render(now = Date.now()) {
   renderTop(state, net);
   if (screen === 'care') renderCare(state, now);
   else if (screen === 'shop') renderShop(state);
+  else if (screen === 'goals') renderGoals(state);
   else if (screen === 'board') renderBoard(state, net, now);
   else if (screen === 'more') renderMore(state, net);
 }
@@ -87,20 +93,35 @@ function submitSignature() {
     Math.round(careScore(state.stats) / 5)].join('|');
 }
 
-/** Publishes this device's pet, at most once per cooldown. */
+/** Adopts a save that arrived from the server. */
+function adoptRemote(incoming, note) {
+  if (!incoming) return false;
+  state = incoming;
+  lastSubmitSig = null;
+  setEnabled(state.sound);
+  save(state);
+  render();
+  if (note) toast(note, 'good');
+  return true;
+}
+
+/** Pushes progress, at most once per cooldown, and takes back the newer save. */
 async function publish(force = false) {
-  if (!isConfigured()) return;
+  if (!isSignedIn() || !isConfigured()) return;
   const now = Date.now();
   const sig = submitSignature();
   if (!force && sig === lastSubmitSig) return;
   if (!force && now - lastSubmitAt < ONLINE.submitCooldownMs) return;
 
   lastSubmitAt = now;
-  const result = await submitPet(state, careScore(state.stats));
+  const result = await sync(state, now);
   if (result.ok) {
     lastSubmitSig = sig;
+    adoptRemote(result.state, 'Picked up where your other device left off');
+  } else if (result.error === 'no-session') {
+    net = { ...net, account: null };
+    render();
   } else if (net.status === 'live') {
-    // Keep showing the board we have, but stop claiming it is current.
     net = { ...net, status: 'error', error: result.error, detail: result.detail || '' };
     render();
   }
@@ -122,14 +143,13 @@ async function refreshBoard(force = false) {
     render();
   }
 
-  const result = await fetchBoard(ONLINE.boardLimit);
+  const result = await fetchBoard(accountId(), ONLINE.boardLimit);
   boardInFlight = false;
 
   net = result.ok
-    ? { status: 'live', entries: result.entries, error: null, detail: '',
-        fetchedAt: Date.now(), deviceId: identity().id }
-    : { ...net, status: 'error', error: result.error, detail: result.detail || '',
-        deviceId: identity().id };
+    ? { ...net, status: 'live', entries: result.entries, error: null, detail: '',
+        fetchedAt: Date.now() }
+    : { ...net, status: 'error', error: result.error, detail: result.detail || '' };
   render();
 }
 
@@ -137,7 +157,7 @@ async function refreshBoard(force = false) {
 async function syncOnline(force = false) {
   if (!isConfigured()) {
     if (net.status !== 'off') {
-      net = { status: 'off', entries: null, error: null, detail: '', fetchedAt: 0, deviceId: null };
+      net = { ...net, status: 'off', entries: null, error: null, detail: '', fetchedAt: 0 };
       render();
     }
     return;
@@ -146,12 +166,30 @@ async function syncOnline(force = false) {
   await refreshBoard(force);
 }
 
+/** Toasts for quests and badges as they land. */
+function announceGoals(earned) {
+  for (const quest of earned.quests) {
+    toast(`${quest.icon} ${quest.name} · 🪙 +${quest.coins}`, 'good');
+    sfx.coin();
+  }
+  if (earned.sweep) {
+    toast(`🎉 All three goals done · 🪙 +${QUEST_SWEEP_BONUS}`, 'gold');
+    sfx.levelUp();
+  }
+  for (const badge of earned.badges) {
+    toast(`${badge.icon} Badge earned: ${badge.name} · 🪙 +${badge.coins}`, 'gold');
+    sfx.levelUp();
+  }
+  if (earned.coins > 0) bump('coins');
+}
+
 /* -------------------------------- clock ------------------------------- */
 
 function tick() {
   const now = Date.now();
   const { events } = simulate(state, now);
   announce(events);
+  announceGoals(updateGoals(state, dayKey()));
   render(now);
   if (now - lastSave > SAVE_MS) {
     lastSave = now;
@@ -231,7 +269,9 @@ function onSort() {
   state.sortDir = state.sortDir === 'desc' ? 'asc' : 'desc';
   sfx.tap();
   save(state);
-  renderBoard(state);
+  // Through render(), so the live board is passed along: rendering
+  // without it drops back to the practice rivals mid-session.
+  render();
 }
 
 async function onRenameRock() {
@@ -280,6 +320,89 @@ function onScreen(name) {
   // Opening the leaderboard is a deliberate request to see it, so bypass
   // the freshness window; the periodic refresh in tick() still respects it.
   if (name === 'board') syncOnline(true);
+}
+
+/* -------------------------- account handlers -------------------------- */
+
+/** Signs in or registers through the dialog, keeping it open on failure. */
+async function runAuth({ canSkip, intro, mode }) {
+  let outcome = null;
+
+  const answer = await authDialog({
+    mode,
+    canSkip,
+    intro,
+    verify: async ({ mode: how, username: name, password }) => {
+      const result = how === 'register'
+        ? await register(name, password, state.rockName, state)
+        : await login(name, password);
+      if (!result.ok) {
+        return describeError(result.error, result.detail, result.message);
+      }
+      outcome = { how, result };
+      return null;
+    },
+  });
+
+  state.introDone = true;
+  if (!answer || answer.mode === 'skip' || !outcome) {
+    save(state);
+    render();
+    return false;
+  }
+
+  net = { ...net, account: { username: username(), id: accountId() } };
+
+  if (outcome.how === 'login') {
+    // The account's save is authoritative; this device adopts it.
+    if (!adoptRemote(outcome.result.state)) state.playerName = username();
+    state.playerName = username();
+    toast(`Welcome back, ${username()}`, 'good');
+  } else {
+    state.playerName = username();
+    const rock = await dialog.prompt('Name your rock', state.rockName,
+      '<p>Your account is ready. What is this handsome mineral called? Other keepers see this name on the leaderboard.</p>');
+    if (rock) state.rockName = rock;
+    toast(`Welcome, ${username()}`, 'gold');
+    sfx.levelUp();
+  }
+
+  state.introDone = true;
+  save(state);
+  lastSubmitSig = null;
+  await publish(true);
+  await refreshBoard(true);
+  render();
+  return true;
+}
+
+async function onAccount() {
+  if (!isConfigured()) {
+    await dialog.info('Not connected', '<p>This copy of the game has no Supabase project configured, so there are no accounts to sign in to.</p>');
+    return;
+  }
+  if (isSignedIn()) {
+    const ok = await dialog.confirm('Switch account?',
+      '<p>You will be signed out of this account first. Your rock stays safe on the server and comes back when you sign in again.</p>',
+      'Sign out and switch');
+    if (!ok) return;
+    await doSignOut(false);
+  }
+  await runAuth({ canSkip: true, mode: isSignedIn() ? 'login' : 'register' });
+}
+
+async function doSignOut(confirmFirst = true) {
+  if (confirmFirst) {
+    const ok = await dialog.confirm('Sign out?',
+      `<p>Your rock stays on the server under <b>${username() || 'your account'}</b>. This device keeps playing its
+       own copy until you sign in again.</p>`, 'Sign out');
+    if (!ok) return;
+  }
+  await signOut();
+  net = { ...net, account: null };
+  lastSubmitSig = null;
+  render();
+  if (confirmFirst) toast('Signed out', '');
 }
 
 /* --------------------------- online handlers -------------------------- */
@@ -412,6 +535,47 @@ function registerServiceWorker() {
     .catch(() => setVersionLine(`Pet Rock Simulator v${APP_VERSION} · offline cache unavailable`));
 }
 
+/**
+ * Restores the signed-in account if there is one, and otherwise offers
+ * the account gate the first time the game runs on this device.
+ */
+async function startSession() {
+  if (!isConfigured()) {
+    net = { ...net, status: 'off' };
+    render();
+    return;
+  }
+
+  net = { ...net, status: 'loading' };
+  render();
+
+  if (isSignedIn()) {
+    const resumed = await resume();
+    if (resumed.ok) {
+      net = { ...net, account: { username: username(), id: accountId() } };
+      // Only take the server's save when it is genuinely ahead: this
+      // device may have been played offline since the last sync.
+      if (resumed.state && resumed.clock > Math.floor(state.lastTick || 0)) {
+        adoptRemote(resumed.state);
+      }
+      state.playerName = username();
+      save(state);
+      render();
+    }
+  }
+
+  if (!isSignedIn() && !state.introDone) {
+    await runAuth({
+      canSkip: true,
+      mode: 'register',
+      intro: 'Pick a username and your rock follows you to any device you sign in on — '
+        + 'and other keepers can see it on the leaderboard.',
+    });
+  }
+
+  await syncOnline(true);
+}
+
 /* -------------------------------- boot -------------------------------- */
 
 function boot() {
@@ -423,6 +587,7 @@ function boot() {
   initUI({
     onAction, onItem, onSort, onRenameRock, onSound, onReset, onInstall, onScreen,
     onConnect, onDisconnect, onRefresh,
+    onAccount, onSignOut: () => doSignOut(true),
     onShopTab: () => renderShop(state),
     onName: setName,
   });
@@ -453,8 +618,7 @@ function boot() {
   save(state);
   lastSave = now;
 
-  net = { ...net, status: isConfigured() ? 'loading' : 'off', deviceId: identity().id };
-  syncOnline(true);
+  startSession();
 
   setInterval(tick, TICK_MS);
   requestAnimationFrame(frame);

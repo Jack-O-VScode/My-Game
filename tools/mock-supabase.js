@@ -15,6 +15,7 @@
  */
 
 import { createServer } from 'node:http';
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -25,8 +26,27 @@ const flag = (name, fallback) => {
 const PORT = Number(flag('port', 8081));
 const ANON_KEY = flag('key', 'test-anon-key');
 
-/** device_id -> row, exactly one row per device. */
+/** username_lower -> account, and account_id -> pet: one pet per account. */
+const accounts = new Map();
+const sessions = new Map();   // sha256(token) -> account_id
 const pets = new Map();
+
+let nextId = 1;
+const newId = () => `acc-${nextId++}`;
+
+// scrypt stands in for the bcrypt the real schema uses: the point is that
+// the mock never keeps a password in the clear either.
+const hashPassword = (password, salt = randomBytes(16).toString('hex')) =>
+  `${salt}:${scryptSync(password, salt, 32).toString('hex')}`;
+
+const passwordMatches = (password, stored) => {
+  const [salt, digest] = String(stored).split(':');
+  const attempt = scryptSync(password, salt, 32);
+  const known = Buffer.from(digest, 'hex');
+  return attempt.length === known.length && timingSafeEqual(attempt, known);
+};
+
+const tokenHash = (token) => createHash('sha256').update(String(token)).digest('hex');
 
 const clamp = (v, lo, hi, fallback) => {
   // `Number(null)` is 0, so a missing value must be rejected before coercion
@@ -72,6 +92,117 @@ async function readBody(req) {
   }
 }
 
+function payload(account, token) {
+  const pet = pets.get(account.id);
+  return {
+    account_id: account.id,
+    username: account.username,
+    token,
+    save: pet.save,
+    client_clock: pet.client_clock,
+    rock_name: pet.rock_name,
+    updated_at: pet.updated_at,
+  };
+}
+
+function applySave(account, state, clock) {
+  const pet = pets.get(account.id);
+  const level = clamp(state?.level, 1, 999, 1);
+  Object.assign(pet, {
+    rock_name: name(state?.rockName, pet.rock_name),
+    level,
+    xp: clamp(state?.xp, 0, 1000000, 0),
+    best_level: Math.max(pet.best_level, clamp(state?.bestLevel, 1, 999, level), level),
+    care: clamp(state?.care, 0, 100, 0),
+    equipped: state?.equipped && typeof state.equipped === 'object' ? state.equipped : {},
+    badges: Array.isArray(state?.unlocked) ? state.unlocked.length : 0,
+    save: state,
+    client_clock: Math.max(pet.client_clock, Number(clock) || 0),
+    updated_at: new Date().toISOString(),
+  });
+}
+
+function startSession(accountId) {
+  const token = randomBytes(32).toString('hex');
+  sessions.set(tokenHash(token), accountId);
+  return token;
+}
+
+function rpc(res, fn, body) {
+  if (fn === 'register') {
+    const username = String(body.p_username || '').trim();
+    const lower = username.toLowerCase();
+    if (username.length < 3 || username.length > 18) {
+      return fail(res, 400, '22023', 'Username must be 3 to 18 characters');
+    }
+    if (!/^[A-Za-z0-9 _.-]+$/.test(username)) {
+      return fail(res, 400, '22023', 'Username can use letters, numbers, spaces, dot, dash and underscore');
+    }
+    if (String(body.p_password || '').length < 8) {
+      return fail(res, 400, '22023', 'Password must be at least 8 characters');
+    }
+    if (accounts.has(lower)) return fail(res, 400, '23505', 'That username is taken');
+
+    const account = {
+      id: newId(), username, username_lower: lower,
+      password_hash: hashPassword(body.p_password), failed: 0, lockedUntil: 0,
+    };
+    accounts.set(lower, account);
+    pets.set(account.id, {
+      account_id: account.id, username_lower: lower,
+      rock_name: name(body.p_rock, 'Pebbles'),
+      level: 1, xp: 0, best_level: 1, care: 0, equipped: {}, badges: 0,
+      save: {}, client_clock: 0, updated_at: new Date().toISOString(),
+    });
+    if (body.p_state && body.p_state.level !== undefined) {
+      applySave(account, body.p_state, body.p_state.lastTick);
+      pets.get(account.id).rock_name = name(body.p_rock, pets.get(account.id).rock_name);
+    }
+    console.log(`[mock] register ${username} (${accounts.size} accounts)`);
+    return send(res, 200, payload(account, startSession(account.id)));
+  }
+
+  if (fn === 'login') {
+    const account = accounts.get(String(body.p_username || '').trim().toLowerCase());
+    if (!account) return fail(res, 400, '28P01', 'Wrong username or password');
+    if (account.lockedUntil > Date.now()) {
+      return fail(res, 400, '28P01', 'Too many attempts. Try again in a few minutes');
+    }
+    if (!passwordMatches(String(body.p_password || ''), account.password_hash)) {
+      account.failed += 1;
+      if (account.failed >= 5) account.lockedUntil = Date.now() + 15 * 60000;
+      console.log(`[mock] login REJECTED for ${account.username}`);
+      return fail(res, 400, '28P01', 'Wrong username or password');
+    }
+    account.failed = 0;
+    account.lockedUntil = 0;
+    console.log(`[mock] login ${account.username}`);
+    return send(res, 200, payload(account, startSession(account.id)));
+  }
+
+  const accountFor = (token) => {
+    const id = sessions.get(tokenHash(token || ''));
+    return id ? [...accounts.values()].find((a) => a.id === id) : null;
+  };
+
+  if (fn === 'resume' || fn === 'sync_pet') {
+    const account = accountFor(body.p_token);
+    if (!account) return fail(res, 400, '28000', 'Session expired');
+    if (fn === 'sync_pet') {
+      const stored = pets.get(account.id).client_clock;
+      if ((Number(body.p_clock) || 0) >= stored) applySave(account, body.p_state, body.p_clock);
+    }
+    return send(res, 200, payload(account, body.p_token));
+  }
+
+  if (fn === 'sign_out') {
+    sessions.delete(tokenHash(body.p_token || ''));
+    return send(res, 204);
+  }
+
+  return fail(res, 404, 'PGRST202', `no function ${fn}`);
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
@@ -90,40 +221,21 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/rest/v1/pets') {
     const limit = clamp(url.searchParams.get('limit'), 1, 1000, 100);
     const rows = [...pets.values()]
-      .map(({ secret, ...visible }) => visible)   // `secret` is not granted to anon
+      .map(({ save, client_clock, ...visible }) => ({   // neither column is granted
+        ...visible,
+        accounts: { username: accounts.get(visible.username_lower)?.username },
+      }))
+      .map(({ username_lower, ...row }) => row)
       .sort((a, b) => b.level - a.level || b.xp - a.xp)
       .slice(0, limit);
     console.log(`[mock] GET pets -> ${rows.length} rows`);
     return send(res, 200, rows);
   }
 
-  if (req.method === 'POST' && url.pathname === '/rest/v1/rpc/submit_pet') {
-    const body = await readBody(req);
-    if (!body || !body.p_device || !body.p_secret) {
-      return fail(res, 400, '22023', 'device and secret are required');
-    }
-
-    const existing = pets.get(body.p_device);
-    if (existing && existing.secret !== body.p_secret) {
-      console.log(`[mock] submit_pet REJECTED (secret mismatch) ${body.p_device}`);
-      return fail(res, 403, '42501', 'device secret mismatch');
-    }
-
-    const level = clamp(body.p_level, 1, 999, 1);
-    const row = {
-      device_id: body.p_device,
-      secret: body.p_secret,
-      keeper: name(body.p_keeper, 'Keeper'),
-      rock_name: name(body.p_rock, 'Pebbles'),
-      level,
-      xp: clamp(body.p_xp, 0, 1000000, 0),
-      best_level: Math.max(existing?.best_level || 0, clamp(body.p_best, 1, 999, level), level),
-      care: clamp(body.p_care, 0, 100, 0),
-      updated_at: new Date().toISOString(),
-    };
-    pets.set(body.p_device, row);
-    console.log(`[mock] submit_pet ${row.keeper} Lv${row.level} (${pets.size} devices)`);
-    return send(res, 204);
+  if (req.method === 'POST' && url.pathname.startsWith('/rest/v1/rpc/')) {
+    const fn = url.pathname.split('/').pop();
+    const body = (await readBody(req)) || {};
+    return rpc(res, fn, body);
   }
 
   return fail(res, 404, 'PGRST202', `no route for ${req.method} ${url.pathname}`);

@@ -58,6 +58,20 @@
       <div class="grid" id="shop-grid"></div>
     </section>
 
+    <!-- ------------------------------ GOALS ----------------------------- -->
+    <section class="screen" id="screen-goals" aria-label="Goals" hidden>
+      <div class="section-head">
+        <h2>Today's Goals</h2>
+        <p class="hint">Three every day, the same three for every keeper. They reset at midnight.</p>
+      </div>
+      <div class="quests" id="quests"></div>
+      <div class="section-head" style="margin-top:22px">
+        <h2>Badges</h2>
+        <p class="hint" id="badge-count"></p>
+      </div>
+      <div class="badges" id="badges"></div>
+    </section>
+
     <!-- --------------------------- LEADERBOARD -------------------------- -->
     <section class="screen" id="screen-board" aria-label="Leaderboard" hidden>
       <div class="section-head">
@@ -86,6 +100,15 @@
         <h3>Install the app</h3>
         <p class="hint" id="install-hint">Add Pet Rock to your home screen or desktop and it works offline.</p>
         <button class="btn primary" id="install-btn" type="button">Install</button>
+      </div>
+
+      <div class="card">
+        <h3>Account</h3>
+        <p class="hint" id="account-status">Checking…</p>
+        <div class="btn-row">
+          <button class="btn primary" id="account-action" type="button">Create account</button>
+          <button class="btn ghost" id="account-signout" type="button" hidden>Sign out</button>
+        </div>
       </div>
 
       <div class="card">
@@ -126,7 +149,8 @@
           <li>Let it slide and XP drains instead: levels can and will go back down.</li>
           <li>Care actions and level-ups pay coins. Spend them in the boutique.</li>
           <li>Come back each day for a streak bonus.</li>
-          <li>One pet per device — your device keeps its own row on the board.</li>
+          <li>Finish the daily goals for extra coins, and collect badges as you go.</li>
+          <li>Your account carries one rock — sign in anywhere to keep playing it.</li>
         </ul>
       </div>
 
@@ -143,6 +167,7 @@
   <nav class="tabbar" aria-label="Sections">
     <button class="tab is-active" type="button" data-screen="care"><span aria-hidden="true">🪨</span>Care</button>
     <button class="tab" type="button" data-screen="shop"><span aria-hidden="true">🛍️</span>Shop</button>
+    <button class="tab" type="button" data-screen="goals"><span aria-hidden="true">🎯</span>Goals</button>
     <button class="tab" type="button" data-screen="board"><span aria-hidden="true">🏆</span>Ranks</button>
     <button class="tab" type="button" data-screen="more"><span aria-hidden="true">⚙️</span>More</button>
   </nav>

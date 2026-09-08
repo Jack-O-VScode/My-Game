@@ -9,6 +9,9 @@ import {
   LEGACY_KEEPER_NAME, SAVE_VERSION, STATS, TUNING, itemById, moodFor,
   levelReward, xpForLevel,
 } from './config.js';
+import {
+  BADGE_BY_ID, QUEST_BY_ID, freshCounts, freshTotals, recordAction, recordPurchase,
+} from './achievements.js';
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const HOUR = 3600000;
@@ -37,10 +40,16 @@ export function newState(now = Date.now()) {
     careCount: 0,
     streak: 0,
     lastDay: null,
+    unlocked: [],
+    today: null,
+    counts: freshCounts(),
+    totals: freshTotals(),
+    quests: { ids: [], done: [], sweep: false },
     createdAt: now,
     lastTick: now,
     sound: true,
     sortDir: 'desc',
+    introDone: false,
   };
 }
 
@@ -82,6 +91,30 @@ export function normalise(raw, now = Date.now()) {
     if (item && item.slot === slot && ownedSet.has(id)) s.equipped[slot] = id;
   }
 
+  s.unlocked = Array.isArray(raw.unlocked)
+    ? [...new Set(raw.unlocked.filter((id) => BADGE_BY_ID.has(id)))]
+    : [];
+
+  s.counts = { ...freshCounts() };
+  for (const key of Object.keys(s.counts)) {
+    const v = raw.counts?.[key];
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) s.counts[key] = Math.floor(v);
+  }
+  s.totals = { ...freshTotals() };
+  for (const key of Object.keys(s.totals)) {
+    const v = raw.totals?.[key];
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) s.totals[key] = Math.floor(v);
+  }
+
+  s.today = typeof raw.today === 'string' ? raw.today : null;
+  const ids = Array.isArray(raw.quests?.ids)
+    ? raw.quests.ids.filter((id) => QUEST_BY_ID.has(id)) : [];
+  s.quests = {
+    ids,
+    done: Array.isArray(raw.quests?.done) ? raw.quests.done.filter((id) => ids.includes(id)) : [],
+    sweep: raw.quests?.sweep === true,
+  };
+
   s.cooldowns = {};
   for (const a of ACTIONS) {
     const t = Number(raw.cooldowns?.[a.id]);
@@ -92,6 +125,7 @@ export function normalise(raw, now = Date.now()) {
   s.lastTick = Number.isFinite(last) ? Math.min(last, now) : now;
   s.createdAt = Number(raw.createdAt) || s.lastTick;
   s.sound = raw.sound !== false;
+  s.introDone = raw.introDone === true;
   s.sortDir = raw.sortDir === 'asc' ? 'asc' : 'desc';
   s.lastDay = typeof raw.lastDay === 'string' ? raw.lastDay : null;
   return s;
@@ -198,6 +232,7 @@ export function applyAction(state, actionId, now = Date.now()) {
   state.stats[action.stat] = after;
   state.cooldowns[actionId] = now + action.cooldown;
   state.careCount += 1;
+  recordAction(state, actionId);
 
   const coins = Math.round(gained * TUNING.coinsPerPoint);
   state.coins += coins;
@@ -238,6 +273,7 @@ export function buy(state, itemId) {
   if (!check.ok) return check;
   state.coins -= check.item.price;
   state.owned.push(itemId);
+  recordPurchase(state);
   state.equipped[check.item.slot] = itemId;
   return { ok: true, item: check.item };
 }

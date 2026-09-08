@@ -3,7 +3,7 @@
  * once installed. Bump CACHE when shipping new files.
  */
 
-const CACHE = 'pet-rock-v1.3.0';
+const CACHE = 'pet-rock-v1.4.0';
 
 const SHELL = [
   './',
@@ -18,6 +18,8 @@ const SHELL = [
   './js/storage.js',
   './js/leaderboard.js',
   './js/online.js',
+  './js/account.js',
+  './js/achievements.js',
   './js/sfx.js',
   './icons/icon-192.png',
   './icons/icon-512.png',

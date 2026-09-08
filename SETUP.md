@@ -8,7 +8,7 @@ Your site will be at **https://jack-o-vscode.github.io/My-Game/**
 | --- | --- |
 | ✅ Game code, tests, deploy workflow | pushed |
 | ✅ Supabase keys wired into [`js/config.js`](js/config.js) | project `dkxuivfyivwskhwfakyx` |
-| ⬜ **Database tables created** | Step 1 below — skip if you already ran it |
+| ⬜ **Database tables created** | Step 1 below — **re-run it**, accounts are new |
 | ⬜ **GitHub Pages switched on** | Step 2 below |
 
 Two steps left, about 4 minutes. Neither can be automated: creating tables
@@ -32,8 +32,15 @@ You want **"Success. No rows returned"**. That is the correct result — the
 script creates a table, a security policy and a function, none of which
 return rows. Running it twice is safe.
 
-To confirm: **Table Editor** in the sidebar should now list a **`pets`**
-table (empty until someone plays).
+To confirm: **Table Editor** should now list **`accounts`**, **`sessions`** and
+**`pets`**, all empty until someone signs up.
+
+> Already ran an older version of this file? Run it again. It renames the old
+> device-keyed board to `pets_legacy` rather than deleting it, and creates the
+> account tables alongside. Players keep the progress saved in their own
+> browser: the first time they open the updated game it offers them an account,
+> and registering carries that rock over. You can drop `pets_legacy` once
+> everyone has signed up.
 
 ---
 
@@ -58,9 +65,11 @@ run is red *from before* you did 2.2, open it → **Re-run all jobs**.
 **3.1** Open the site on **two devices** — phone and laptop, or a normal
 window and a private window. Each is its own device with its own pet.
 
-**3.2** On each, go to **More** and set a different **Keeper** name.
+**3.2** On each, create an account with a different username when the game
+asks. The username is the name other keepers see.
 
-**3.3** Open **Ranks** on both. You want the green line:
+**3.3** Open **Ranks** on both. Each row draws that keeper's own rock. You want
+the green line:
 
 > 🌐 Live · 2 keepers online · updated just now
 
@@ -68,7 +77,12 @@ with both names listed and yours highlighted. Tap **Highest first** to
 reverse the order — it works the same on a live board.
 
 **3.4** For proof from the database side: Supabase → **Table Editor** →
-**pets**. One row per device, with the names and levels you just saw.
+**accounts** lists the usernames, **pets** one row each. Note that
+`password_hash` holds bcrypt hashes, not passwords.
+
+**3.5** The real test of accounts: sign out on one device and sign back in with
+the *other* device's username and password. The same rock, level and cosmetics
+should appear.
 
 Anything else on that status line? See [Troubleshooting](#troubleshooting).
 
@@ -166,9 +180,11 @@ only, and overrides the built-in keys until you press **Play offline**.
   rows to the board. They cannot read secrets, overwrite another device's
   row, or post out-of-range values — but junk entries are possible. If that
   ever happens, rate limiting in the SQL function is the fix.
-- **One pet per device, no accounts.** Clearing site data or switching
-  browsers gives you a new device and a fresh pet. *Start over* replaces your
-  row rather than leaving a duplicate behind.
+- **One rock per account.** Signing in anywhere brings it with you. Playing
+  without an account keeps everything on that device only.
+- **Passwords cannot be recovered.** There is no email address on file and so
+  no reset link. A forgotten password means a new account; you can delete the
+  old row from the Table Editor.
 - **Scores are self-reported.** The server clamps them and enforces one row
   per device, but cannot tell whether a level was truly earned. Friendly
   competition, not a ranked ladder.

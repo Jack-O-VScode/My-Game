@@ -11,7 +11,8 @@ free Supabase project and every player shares one live worldwide leaderboard.
 
 <p align="center">
   <img src="docs/screenshot-care.png" width="300" alt="The care screen: a pet rock in a beanie and scarf with four need bars">
-  <img src="docs/screenshot-online.png" width="300" alt="The live leaderboard, sorted highest level first">
+  <img src="docs/screenshot-online.png" width="300" alt="The live leaderboard, each row drawing that keeper's own rock">
+  <img src="docs/screenshot-goals.png" width="300" alt="Daily goals and the badge collection">
 </p>
 
 ---
@@ -57,10 +58,16 @@ full bar earns nothing), from every level-up, and from a daily check-in streak.
 scenes. Buy once, wear forever, swap any time. Expensive items also need a
 minimum level.
 
-**Leaderboard** — every keeper ranked by level, with a button to flip between
-**highest first** and **lowest first**. Your own row is highlighted wherever it
-lands. Connect Supabase (below) and it's a live worldwide board; leave it
-unconnected and you play against simulated rivals instead.
+**Daily goals and badges** — three quests every day, the same three for every
+keeper, worth coins individually and a bonus for sweeping all three. Fourteen
+badges track the longer arcs: levels, collections, streaks and a perfectly kept
+rock. Both live on the **Goals** tab.
+
+**Leaderboard** — every keeper ranked by level, each row drawing that player's
+actual rock with the cosmetics they bought and the scene they chose, plus their
+badge count. A button flips between **highest first** and **lowest first**, and
+your own row is highlighted wherever it lands. Sign in and it is a live
+worldwide board; play without an account and you face simulated rivals instead.
 
 ## Online leaderboard
 
@@ -80,19 +87,30 @@ detail, including where the dashboard hides each value. To try a project before
 committing keys, use **More → Connect Supabase** in the app — that saves on one
 device only.
 
-**One pet per device.** There are no accounts or logins. On first run a device
-mints a random `device_id` and a private `secret`, kept outside the save file.
-The id is that device's single row on the board; the secret is what stops anyone
-else writing to it. *Start over* resets the pet and **replaces** that row rather
-than leaving a ghost behind, so the board never fills with abandoned rocks.
-Clearing site data or using another browser means a new device, and a new pet.
+**Accounts.** The first run on a device offers a username and password, or a
+sign-in. One account owns one rock, and signing in on a phone, a laptop or a
+friend's browser brings that same rock with it. The username is what other
+keepers see on the board. Declining is allowed — the game then runs purely
+locally against simulated rivals, and the offer stays available under **More**.
+
+Passwords are only ever stored as bcrypt hashes (`pgcrypto`), never in the
+clear, and are never readable by any client. A device keeps a session token,
+which the server holds only as a SHA-256 hash and can expire or revoke. Five
+wrong guesses lock an account for fifteen minutes, and a wrong username and a
+wrong password give the same message, so the form cannot be used to discover who
+has an account.
+
+Two devices on one account converge on whichever save was played most recently
+rather than clobbering each other; progress is pushed on a short cooldown, so
+expect a few seconds of lag when hopping between devices.
 
 **About the anon key.** It's public by design — it names the project, it doesn't
 grant access. What actually protects the data is in `schema.sql`: row level
-security allows `SELECT` only, column grants keep `secret` unreadable, and every
-write goes through `submit_pet()`, which checks the secret and clamps whatever
-the client sends. Committing the anon key is expected. Never put the
-`service_role` key in this repo.
+security allows `SELECT` only, column grants keep password hashes and save blobs
+unreadable, session rows are invisible to every client, and every write goes
+through a `SECURITY DEFINER` function that checks a password or a session token
+and clamps whatever it is given. Committing the anon key is expected. Never put
+the `service_role` key in this repo.
 
 **What it can't do.** Levels are reported by each player's own browser, so a
 determined player can post a level they didn't earn — the server clamps the
@@ -115,7 +133,7 @@ manifest need a real origin, so use the dev server for anything install- or
 offline-related.
 
 ```bash
-npm test           # 34 unit tests covering the game rules and the online layer
+npm test           # 49 unit tests: game rules, goals, online layer
 npm run icons      # regenerate the PNG icon set (needs python3)
 npm run mock       # a stand-in Supabase on :8081, for offline development
 npm run test:e2e   # drives two browsers against the mock (needs: npm i -D playwright)
@@ -123,9 +141,11 @@ npm run test:e2e   # drives two browsers against the mock (needs: npm i -D playw
 
 `npm test` has no dependencies at all. The end-to-end test does need Playwright,
 which is why it is a separate script: it opens two browser contexts as two
-devices and checks they see each other on one board, that the sort toggle works
-on live data, that one device cannot overwrite another's row, and that losing
-the backend falls back to practice rivals without breaking the game.
+devices and checks the whole account flow: registering, signing in elsewhere and
+finding the same rock, wrong passwords and taken usernames, that a player who
+started before accounts existed keeps their progress, that the board draws
+everyone's cosmetics, and that losing the backend falls back to practice rivals
+without breaking the game.
 
 ## Deploying
 
@@ -160,16 +180,19 @@ js/
   config.js             tuning constants, cosmetics catalogue, Supabase keys
   engine.js             pure game rules: decay, XP, levels, coins, shop
   leaderboard.js        board assembly + sorting, live or simulated
-  online.js             Supabase client: device identity, publish, fetch
+  online.js             Supabase transport: config, RPC calls, board fetch
+  account.js            sign up, sign in, cross-device save sync
+  achievements.js       badges and the daily quest rotation
   render.js             draws the rock as layered SVG
   storage.js            guarded localStorage save/load
   sfx.js                WebAudio blips, no audio assets
   ui.js                 DOM rendering and event wiring
   main.js               controller: clock, handlers, sync, install flow
-supabase/schema.sql     table, RLS, and the guarded write function
+supabase/schema.sql     accounts, sessions, pets, RLS and the guarded writes
 tests/
-  engine.test.js        game rules            (node --test)
-  online.test.js        online layer          (node --test)
+  engine.test.js        game rules             (node --test)
+  goals.test.js         badges and quests      (node --test)
+  online.test.js        online + credentials   (node --test)
   online.e2e.mjs        two browsers vs the mock backend (Playwright)
 tools/
   make_icons.py         generates the icon PNGs from scratch

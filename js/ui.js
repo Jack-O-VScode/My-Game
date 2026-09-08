@@ -8,7 +8,11 @@ import { ACTIONS, COSMETICS, SLOTS, STATS, xpForLevel } from './config.js';
 import { careScore, cooldownLeft, mood, needs } from './engine.js';
 import { board, standing } from './leaderboard.js';
 import { describeError } from './online.js';
-import { drawRock, previewBackground, previewSvg } from './render.js';
+import { drawRock, previewBackground, previewSvg, sceneSvg } from './render.js';
+import { QUEST_SWEEP_BONUS, badgeBoard, questBoard } from './achievements.js';
+
+/** Fallback look for keepers whose equipped set is missing or partial. */
+const DEFAULT_LOOK = { skin: 'skin_granite', eyes: 'eyes_googly', bg: 'bg_meadow' };
 
 const STAT_COLOR = { clean: '#6fc9e8', shine: '#ffd166', joy: '#ff8fb0', moss: '#7ddc8f' };
 
@@ -31,6 +35,9 @@ export function initUI(h) {
     shopGrid: $('shop-grid'), board: $('board'), sortBtn: $('sort-btn'),
     sortLabel: $('sort-label'), standing: $('standing'),
     boardStatus: $('board-status'), boardNote: $('board-note'),
+    quests: $('quests'), badges: $('badges'), badgeCount: $('badge-count'),
+    accountStatus: $('account-status'), accountAction: $('account-action'),
+    accountSignout: $('account-signout'),
     onlineStatus: $('online-status'), onlineConfig: $('online-config'),
     onlineClear: $('online-clear'), onlineDevice: $('online-device'),
     toasts: $('toasts'), modal: $('modal'), inputRock: $('input-rock'),
@@ -49,6 +56,8 @@ export function initUI(h) {
 
   els.sortBtn.addEventListener('click', () => handlers.onSort?.());
   els.boardStatus.addEventListener('click', () => handlers.onRefresh?.());
+  els.accountAction.addEventListener('click', () => handlers.onAccount?.());
+  els.accountSignout.addEventListener('click', () => handlers.onSignOut?.());
   els.onlineConfig.addEventListener('click', () => handlers.onConnect?.());
   els.onlineClear.addEventListener('click', () => handlers.onDisconnect?.());
   els.rockName.addEventListener('click', () => handlers.onRenameRock?.());
@@ -243,8 +252,9 @@ function renderNetLine(net, now) {
     line.textContent = `🌐 Live · ${count} keeper${count === 1 ? '' : 's'} online${when}`;
     line.title = 'Tap to refresh';
     els.boardNote.textContent =
-      'One pet per device. Levels are reported by each player\u2019s own browser, '
-      + 'so enjoy the top of the board as friendly competition rather than gospel.';
+      'One rock per account, and it follows you to any device you sign in on. '
+      + 'Levels are reported by each player\u2019s own browser, so enjoy the top of '
+      + 'the board as friendly competition rather than gospel.';
   } else if (status === 'loading') {
     line.textContent = 'Connecting to the worldwide board…';
     els.boardNote.textContent = '';
@@ -258,8 +268,8 @@ function renderNetLine(net, now) {
     line.textContent = '🎮 Practice mode — these rivals are simulated on your device';
     line.title = '';
     els.boardNote.textContent =
-      'Nothing is uploaded and nobody else can see your rock. Connect a Supabase '
-      + 'project under More to play on one shared, worldwide leaderboard.';
+      'Nothing is uploaded and nobody else can see your rock. Create an account '
+      + 'under More to join the shared, worldwide leaderboard.';
   }
 }
 
@@ -283,21 +293,73 @@ export function renderBoard(state, net = null, now = Date.now()) {
   if (els.board.dataset.sig === sig) return;
   els.board.dataset.sig = sig;
 
-  els.board.innerHTML = board(state, dir, now, remote).map((e) => `
+  els.board.innerHTML = board(state, dir, now, remote).map((e) => {
+    // Everyone's cosmetics, drawn with the same renderer as the live pet:
+    // the whole point of buying a hat is that other keepers see it.
+    const equipped = e.isPlayer ? state.equipped : (e.equipped || {});
+    const thumb = sceneSvg({
+      equipped: { ...DEFAULT_LOOK, ...equipped },
+      stats: { clean: 100, shine: 50, moss: 40 },
+      moodId: e.care >= 45 || e.isPlayer ? 'happy' : 'meh',
+      decor: false,
+    });
+    const bg = previewBackground({ equipped: { ...DEFAULT_LOOK, ...equipped } }, { slot: 'none' });
+    return `
     <li class="row-entry${e.isPlayer ? ' me' : ''}">
       <span class="rank">${e.rank}</span>
+      <span class="row-rock" style="background:${bg}" aria-hidden="true">${thumb}</span>
       <span class="who">
         <span class="who-name">${esc(e.keeper)}${e.isPlayer ? ' (you)' : ''}</span>
-        <span class="who-rock">🪨 ${esc(e.rock)}</span>
+        <span class="who-rock">🪨 ${esc(e.rock)}${e.badges ? ` · ${e.badges} 🏅` : ''}</span>
       </span>
       <span class="lvl">Lv ${e.level}</span>
-    </li>`).join('');
+    </li>`;
+  }).join('');
+}
+
+export function renderGoals(state) {
+  const quests = questBoard(state);
+  const sig = quests.map((q) => `${q.id}:${q.have}/${q.target}`).join('|')
+    + `|${state.unlocked.length}|${state.quests.sweep}`;
+  if (els.quests.dataset.sig === sig) return;
+  els.quests.dataset.sig = sig;
+
+  els.quests.innerHTML = quests.map((q) => `
+    <div class="quest${q.done ? ' done' : ''}">
+      <span class="quest-icon" aria-hidden="true">${q.icon}</span>
+      <span class="quest-main">
+        <span class="quest-name">${esc(q.name)}</span>
+        <span class="quest-text">${esc(q.text)} · ${q.have}/${q.target}</span>
+        <span class="quest-bar"><span class="quest-fill" style="width:${(q.have / q.target) * 100}%"></span></span>
+      </span>
+      <span class="quest-prize">${q.done ? '✓' : `🪙 ${q.coins}`}</span>
+    </div>`).join('')
+    + `<p class="sweep-note">${state.quests.sweep
+      ? '🎉 All three done — bonus paid.'
+      : `Finish all three for a 🪙 ${QUEST_SWEEP_BONUS} bonus.`}</p>`;
+
+  const badges = badgeBoard(state);
+  const earned = badges.filter((b) => b.earned).length;
+  els.badgeCount.textContent = `${earned} of ${badges.length} collected`;
+  els.badges.innerHTML = badges.map((b) => `
+    <div class="badge${b.earned ? ' earned' : ''}">
+      <div class="badge-icon" aria-hidden="true">${b.icon}</div>
+      <div class="badge-name">${esc(b.name)}</div>
+      <div class="badge-blurb">${b.earned ? esc(b.blurb) : esc(b.blurb)}</div>
+    </div>`).join('');
 }
 
 export function renderMore(state, net = null) {
   if (document.activeElement !== els.inputRock) els.inputRock.value = state.rockName;
   if (document.activeElement !== els.inputKeeper) els.inputKeeper.value = state.playerName;
   els.soundToggle.checked = !!state.sound;
+
+  const account = net?.account || null;
+  els.accountStatus.textContent = account
+    ? `Signed in as ${account.username}. Your rock follows you to any device you sign in on.`
+    : 'Playing on this device only. Create an account to keep your rock across devices and join the leaderboard.';
+  els.accountAction.textContent = account ? 'Switch account' : 'Create account or sign in';
+  els.accountSignout.hidden = !account;
 
   const status = net?.status || 'off';
   const connected = status !== 'off';
@@ -318,9 +380,7 @@ export function renderMore(state, net = null) {
       + 'this device.';
   }
 
-  els.onlineDevice.textContent = net?.deviceId
-    ? `This device plays as ${net.deviceId.slice(0, 8)} — one pet per device.`
-    : '';
+  els.onlineDevice.textContent = '';
 }
 
 export function setVersionLine(text) {
@@ -420,6 +480,98 @@ function openModal({
 
     if (modal.showModal) modal.showModal(); else modal.setAttribute('open', '');
     setTimeout(() => field?.select(), 50);
+  });
+}
+
+/**
+ * The sign-up / sign-in form. Resolves to {mode, username, password},
+ * {mode:'skip'} when the player chooses to play locally, or null.
+ *
+ * `verify` is called with the credentials and may return an error message
+ * to display; the dialog stays open until it succeeds or is dismissed, so
+ * a wrong password does not lose what was typed.
+ */
+export function authDialog({ mode = 'register', canSkip = true, intro = '', verify }) {
+  return new Promise((resolve) => {
+    const modal = els.modal;
+    const body = $('modal-body');
+    let current = mode;
+
+    $('modal-title').textContent = 'Pet Rock';
+    body.innerHTML = `
+      ${intro ? `<p>${intro}</p>` : ''}
+      <div class="tabs" role="tablist">
+        <button class="tab-chip" type="button" data-mode="register">Create account</button>
+        <button class="tab-chip" type="button" data-mode="login">Sign in</button>
+      </div>
+      <label class="field"><span>Username</span>
+        <input id="auth-user" type="text" maxlength="18" autocomplete="username"
+               autocapitalize="none" spellcheck="false" placeholder="Shown on the leaderboard"></label>
+      <label class="field"><span>Password</span>
+        <input id="auth-pass" type="password" autocomplete="current-password"
+               placeholder="At least 8 characters"></label>
+      <p class="modal-error" id="auth-error" role="alert"></p>
+      ${canSkip ? '<button class="modal-skip" type="button" id="auth-skip">Play on this device without an account</button>' : ''}`;
+
+    const user = $('auth-user');
+    const pass = $('auth-pass');
+    const error = $('auth-error');
+    const ok = $('modal-ok');
+    const cancel = $('modal-cancel');
+    cancel.hidden = true;
+
+    const paint = () => {
+      body.querySelectorAll('.tab-chip').forEach((chip) => {
+        chip.classList.toggle('is-active', chip.dataset.mode === current);
+      });
+      ok.textContent = current === 'register' ? 'Create account' : 'Sign in';
+      pass.autocomplete = current === 'register' ? 'new-password' : 'current-password';
+      error.textContent = '';
+    };
+
+    const close = (value) => {
+      ok.removeEventListener('click', submit);
+      modal.removeEventListener('cancel', onCancel);
+      body.removeEventListener('keydown', onKey);
+      cancel.hidden = false;
+      if (modal.close) modal.close(); else modal.removeAttribute('open');
+      resolve(value);
+    };
+
+    async function submit() {
+      const credentials = { mode: current, username: user.value.trim(), password: pass.value };
+      if (!credentials.username || !credentials.password) {
+        error.textContent = 'Enter a username and password.';
+        return;
+      }
+      ok.disabled = true;
+      error.textContent = 'Just a moment…';
+      const problem = verify ? await verify(credentials) : null;
+      ok.disabled = false;
+      if (problem) {
+        error.textContent = problem;
+        return;
+      }
+      close(credentials);
+    }
+
+    const onCancel = (ev) => {
+      ev?.preventDefault?.();
+      if (canSkip) close({ mode: 'skip' });
+    };
+    const onKey = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } };
+
+    body.querySelectorAll('.tab-chip').forEach((chip) => {
+      chip.addEventListener('click', () => { current = chip.dataset.mode; paint(); user.focus(); });
+    });
+    $('auth-skip')?.addEventListener('click', () => close({ mode: 'skip' }));
+    ok.addEventListener('click', submit);
+    modal.addEventListener('cancel', onCancel);
+    body.addEventListener('keydown', onKey);
+
+    paint();
+    if (modal.showModal) modal.showModal(); else modal.setAttribute('open', '');
+    setTimeout(() => user.focus(), 60);
   });
 }
 
