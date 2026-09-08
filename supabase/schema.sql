@@ -137,7 +137,7 @@ declare
 begin
   delete from public.sessions where expires_at < now();
   insert into public.sessions (token_hash, account_id, expires_at)
-  values (encode(digest(v_token, 'sha256'), 'hex'), p_account, v_expires);
+  values (encode(digest(v_token::bytea, 'sha256'), 'hex'), p_account, v_expires);
   return jsonb_build_object('token', v_token, 'expires_at', v_expires);
 end;
 $$;
@@ -146,7 +146,7 @@ $$;
 create or replace function public.session_account(p_token text)
 returns uuid language sql security definer set search_path = public as $$
   select account_id from public.sessions
-  where token_hash = encode(digest(coalesce(p_token, ''), 'sha256'), 'hex')
+  where token_hash = encode(digest(coalesce(p_token, '')::bytea, 'sha256'), 'hex')
     and expires_at > now();
 $$;
 
@@ -267,7 +267,7 @@ $$;
 create or replace function public.sign_out(p_token text)
 returns void language sql security definer set search_path = public as $$
   delete from public.sessions
-  where token_hash = encode(digest(coalesce(p_token, ''), 'sha256'), 'hex');
+  where token_hash = encode(digest(coalesce(p_token, '')::bytea, 'sha256'), 'hex');
 $$;
 
 /**
